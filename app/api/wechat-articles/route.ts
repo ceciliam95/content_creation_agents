@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   buildWechatArticlesRequest,
-  mapWechatArticlesResponse,
   type WechatApiResponse
 } from "@/lib/wechat-monitor";
+import { saveWechatSearchResult } from "@/lib/search-history";
 
 const endpoint = "http://cn8n.com/p4/fbmain/monitor/v3/kw_search";
 
@@ -51,14 +51,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const mapped = mapWechatArticlesResponse(data);
+    const saved = await saveWechatSearchResult({
+      keyword,
+      status: "success",
+      response: data
+    });
 
     return NextResponse.json({
+      searchId: saved.searchId,
       keyword,
-      total: mapped.total,
-      page: mapped.page,
-      totalPages: mapped.totalPages,
-      days: mapped.days
+      total: saved.total,
+      page: saved.page,
+      totalPages: saved.totalPages,
+      days: saved.days
     });
   } catch (error) {
     const message =

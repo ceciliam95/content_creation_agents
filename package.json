@@ -7,12 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "tsx --test tests/wechat-monitor.test.ts"
+    "test": "tsx --test tests/wechat-monitor.test.ts tests/search-history.test.ts"
   },
   "dependencies": {
     "next": "15.2.4",
     "react": "19.0.0",
-    "react-dom": "19.0.0"
+    "react-dom": "19.0.0",
+    "sqlite": "5.1.1",
+    "sqlite3": "5.1.7"
   },
   "devDependencies": {
     "@types/node": "22.13.10",

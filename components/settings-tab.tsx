@@ -2,9 +2,10 @@ import type { MonitoringCategory } from "@/components/mock-data";
 
 type SettingsTabProps = {
   category: MonitoringCategory;
+  persistenceHint?: string;
 };
 
-export function SettingsTab({ category }: SettingsTabProps) {
+export function SettingsTab({ category, persistenceHint }: SettingsTabProps) {
   return (
     <div className="tab-panel">
       <div className="toolbar">
@@ -14,7 +15,7 @@ export function SettingsTab({ category }: SettingsTabProps) {
             把平台、关键词、对标博主和运行规则拆成独立区块，降低理解成本。
           </p>
         </div>
-        <span className="small-pill">{category.settings.schedule.runTime} 自动运行</span>
+        <span className="small-pill">{category.settings.schedule.runTime}</span>
       </div>
 
       <div className="settings-grid cols-3">
@@ -57,6 +58,18 @@ export function SettingsTab({ category }: SettingsTabProps) {
         </section>
       </div>
 
+      {persistenceHint ? (
+        <section className="settings-block">
+          <h4>历史记录与持久化</h4>
+          <p className="settings-copy">{persistenceHint}</p>
+          <ul className="bullet-list">
+            <li>历史关键词显示在左侧全局列表</li>
+            <li>每次查询都会创建一条待分析报告占位</li>
+            <li>SQLite 文件保存在本地项目目录</li>
+          </ul>
+        </section>
+      ) : null}
+
       <section className="settings-block">
         <h4>对标博主 / 账号</h4>
         <p className="settings-copy">
@@ -77,4 +90,3 @@ export function SettingsTab({ category }: SettingsTabProps) {
     </div>
   );
 }
-

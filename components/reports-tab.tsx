@@ -11,6 +11,11 @@ type ReportsTabProps = {
   onReportModeChange: (mode: "日报" | "最近 7 天汇总") => void;
   selectedReportDate: string;
   onReportDateChange: (date: string) => void;
+  historyContext?: {
+    keyword: string;
+    createdAt: string;
+    reportStatus: string;
+  };
 };
 
 export function ReportsTab({
@@ -18,12 +23,59 @@ export function ReportsTab({
   reportMode,
   onReportModeChange,
   selectedReportDate,
-  onReportDateChange
+  onReportDateChange,
+  historyContext
 }: ReportsTabProps) {
   const activeReport =
     category.reportDays.find((report) => report.date === selectedReportDate) ??
     category.reportDays[0];
   const recentTopics = getRecentTopics(category);
+
+  if (historyContext) {
+    return (
+      <div className="tab-panel">
+        <div className="toolbar">
+          <div>
+            <h3>选题分析与报告</h3>
+            <p className="section-copy">
+              当前历史查询已和未来的 AI 选题分析建立关联，本阶段先显示待分析占位。
+            </p>
+          </div>
+          <span className="small-pill">{historyContext.reportStatus === "pending" ? "待分析" : historyContext.reportStatus}</span>
+        </div>
+
+        <div className="soft-panel">
+          <div className="split-header">
+            <div>
+              <h4>该次历史查询的选题信息尚未生成</h4>
+              <p className="report-copy">
+                关键词“{historyContext.keyword}”已保存，后续可以直接基于这次查询结果生成选题分析与建议。
+              </p>
+            </div>
+            <span className="small-pill">{historyContext.createdAt}</span>
+          </div>
+          <div className="insight-grid">
+            <div className="settings-block">
+              <h4>已完成</h4>
+              <ul className="bullet-list">
+                <li>关键词已保存到历史记录</li>
+                <li>公众号文章结果已落到 SQLite</li>
+                <li>该次查询已创建待分析报告占位</li>
+              </ul>
+            </div>
+            <div className="settings-block">
+              <h4>后续这里会展示</h4>
+              <ul className="bullet-list">
+                <li>热点总结</li>
+                <li>AI 观察结论</li>
+                <li>选题建议与方向简介</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="tab-panel">
@@ -136,4 +188,3 @@ export function ReportsTab({
     </div>
   );
 }
-
