@@ -1,8 +1,4 @@
-export type Platform =
-  | "抖音"
-  | "小红书"
-  | "微博"
-  | "B站";
+export type Platform = "公众号" | "抖音" | "小红书" | "微博" | "B站";
 
 export type DashboardTab = "内容" | "选题分析与报告" | "监控设置";
 
@@ -15,6 +11,7 @@ export type ContentItem = {
   heat: number;
   tags: string[];
   summary: string;
+  url?: string;
 };
 
 export type ContentDay = {
@@ -64,231 +61,71 @@ export type MonitoringCategory = {
   contentDays: ContentDay[];
   reportDays: ReportDay[];
   settings: MonitoringSettings;
+  liveSource?: {
+    type: "wechat";
+    keyword: string;
+  };
 };
 
 const categories: MonitoringCategory[] = [
   {
-    id: "claudecode",
-    name: "ClaudeCode 选题监控",
-    summary: "聚焦 AI 编程效率、工作流演示与开发者工具内容走势",
-    runStatus: "今日 08:00 已自动运行",
-    lastRun: "3 月 30 日 08:00",
-    platformCount: 4,
-    keywordCount: 6,
-    creatorCount: 5,
-    contentDays: [
-      {
-        date: "3 月 30 日",
-        totalItems: 28,
-        breakoutCount: 6,
-        leadPlatform: "抖音",
-        items: [
-          {
-            id: "c1",
-            title: "Claude Code 实战：20 分钟接管重复开发任务",
-            platform: "抖音",
-            author: "Prompt 工程所",
-            publishTime: "09:12",
-            heat: 98,
-            tags: ["AI 编程", "工作流", "提效"],
-            summary: "用真实编码案例演示从需求拆解到生成代码的完整闭环，评论区讨论集中在提效幅度。"
-          },
-          {
-            id: "c2",
-            title: "Vibe Coding 和 Claude Code 谁更适合内容团队",
-            platform: "小红书",
-            author: "工具流研究员",
-            publishTime: "10:40",
-            heat: 91,
-            tags: ["对比测评", "内容团队", "AI 工具"],
-            summary: "对比不同角色使用场景，爆点在于把开发工具翻译成运营语言。"
-          },
-          {
-            id: "c3",
-            title: "我用 Claude Code 搭了一个运营日报系统",
-            platform: "B站",
-            author: "运营自动化实验室",
-            publishTime: "12:05",
-            heat: 89,
-            tags: ["自动化", "日报", "案例拆解"],
-            summary: "长视频内容围绕业务场景展开，用户重点关注具体提示词与流程配置。"
-          },
-          {
-            id: "c4",
-            title: "今天最值得抄的 AI 编程开场钩子有哪些",
-            platform: "微博",
-            author: "内容钩子观察局",
-            publishTime: "14:18",
-            heat: 84,
-            tags: ["内容钩子", "AI 编程", "传播"],
-            summary: "围绕高传播标题句式进行拆分，适合延展为选题模板。"
-          }
-        ]
-      },
-      {
-        date: "3 月 29 日",
-        totalItems: 24,
-        breakoutCount: 5,
-        leadPlatform: "小红书",
-        items: [
-          {
-            id: "c5",
-            title: "开发者为什么开始公开自己的 AI 工作流",
-            platform: "小红书",
-            author: "远程协作手册",
-            publishTime: "09:55",
-            heat: 92,
-            tags: ["工作流", "个人品牌", "开发者"],
-            summary: "把工具展示变成个人方法论展示，用户更愿意收藏。"
-          },
-          {
-            id: "c6",
-            title: "Claude Code 的真实上手门槛到底高不高",
-            platform: "抖音",
-            author: "AI 工具上手官",
-            publishTime: "11:22",
-            heat: 88,
-            tags: ["入门", "教程", "误区"],
-            summary: "内容热度来自反常识切入，评论区关注新手是否能直接复用流程。"
-          }
-        ]
-      },
-      {
-        date: "3 月 28 日",
-        totalItems: 18,
-        breakoutCount: 3,
-        leadPlatform: "B站",
-        items: [
-          {
-            id: "c7",
-            title: "我把 7 个运营动作交给 Claude Code 之后发生了什么",
-            platform: "B站",
-            author: "增长实验室",
-            publishTime: "16:30",
-            heat: 86,
-            tags: ["增长", "自动化", "复盘"],
-            summary: "以结果复盘驱动观看，适合拆成系列内容。"
-          }
-        ]
-      },
-      {
-        date: "3 月 27 日",
-        totalItems: 15,
-        breakoutCount: 2,
-        leadPlatform: "微博",
-        items: [
-          {
-            id: "c8",
-            title: "AI 编程工具内容开始从炫技转向交付结果",
-            platform: "微博",
-            author: "产品内容观察",
-            publishTime: "13:14",
-            heat: 78,
-            tags: ["趋势", "交付结果", "定位"],
-            summary: "观点型内容，适合用于报告里的趋势判断。"
-          }
-        ]
-      },
-      {
-        date: "3 月 26 日",
-        totalItems: 17,
-        breakoutCount: 3,
-        leadPlatform: "抖音",
-        items: [
-          {
-            id: "c9",
-            title: "如何把一段需求直接变成能演示的原型",
-            platform: "抖音",
-            author: "独立开发加速器",
-            publishTime: "18:05",
-            heat: 82,
-            tags: ["原型", "需求拆解", "实操"],
-            summary: "实操型内容带动完播，适合发展为教程选题。"
-          }
-        ]
-      }
-    ],
+    id: "wechat-monitor",
+    name: "公众号文章监控",
+    summary: "按关键词监控公众号文章热度，供首页选题监控直接查看公众号内容走势。",
+    runStatus: "打开页面时实时拉取",
+    lastRun: "等待首次请求",
+    platformCount: 1,
+    keywordCount: 1,
+    creatorCount: 0,
+    contentDays: [],
     reportDays: [
       {
-        date: "3 月 30 日",
-        title: "ClaudeCode 方向日报",
-        preview: "运营团队最关注的不是模型本身，而是具体能替代哪些重复动作。",
-        hotSummary: "高热内容集中在“AI 工具直接接手实际工作”这一叙事，用户对可复制流程和投入产出比最敏感。",
+        date: "最新",
+        title: "公众号选题观察",
+        preview: "围绕“网文出海”持续观察公众号文章结构、叙事角度和阅读反馈。",
+        hotSummary:
+          "当前报告区先保留为原型占位，后续可基于公众号热门文章再接入 AI 选题分析。",
         aiTakeaways: [
-          "结果导向的案例比单纯工具介绍更容易触发收藏和转发。",
-          "新手门槛类内容持续有流量，说明市场仍处于认知教育阶段。",
-          "对比型选题能够帮助运营人快速建立工具选型心智。"
+          "优先关注高阅读文章的标题结构和开头叙事方式。",
+          "原创文章和地域标签有助于判断内容源头与角度差异。",
+          "后续可把公众号热文直接送入 AI 分析，生成选题建议。"
         ],
-        suggestedFocus: ["抖音短实操", "小红书对比总结", "B站完整案例"],
+        suggestedFocus: ["热文标题", "高阅读账号", "原创内容角度"],
         topics: [
           {
-            id: "ct1",
-            title: "内容团队能立刻交给 Claude Code 的 5 个动作",
-            brief: "从日报、脚本、竞品整理等高频动作切入，爆点在于直接回应运营人的效率焦虑，增长空间来自场景可扩展和模板可复用。"
+            id: "wechat-topic-1",
+            title: "网文出海赛道有哪些正在升温的新叙事",
+            brief: "通过公众号近期高阅读文章总结角度变化，适合后续扩展为日报或周报栏目。"
           },
           {
-            id: "ct2",
-            title: "Claude Code 与 Vibe Coding 的团队分工指南",
-            brief: "用角色分工视角做对比，解释为什么不同岗位该用不同工作流，适合形成争议讨论并拉动互动。"
-          },
-          {
-            id: "ct3",
-            title: "从一句需求到一个原型页：AI 编程最适合做什么",
-            brief: "围绕低门槛高成就感场景展开，爆点在于快速可视化结果，增长空间在于可做成系列案例。"
-          }
-        ]
-      },
-      {
-        date: "3 月 29 日",
-        title: "ClaudeCode 方向日报",
-        preview: "公开工作流比堆功能更能建立可信度。",
-        hotSummary: "用户更愿意看别人如何把 AI 工具融入团队流程，而不是单独展示模型能力。",
-        aiTakeaways: [
-          "工作流透明化正在成为内容竞争点。",
-          "团队协作场景比个人尝鲜场景更容易形成收藏。",
-          "“我这样做省了多少时间”依然是最强传播母题。"
-        ],
-        suggestedFocus: ["协作流程拆解", "节省时间对比", "真实案例截图"],
-        topics: [
-          {
-            id: "ct4",
-            title: "把团队 AI 工作流讲清楚，比介绍工具更重要",
-            brief: "强调流程公开带来的信任感，适合作为观点类和案例类内容的中间桥梁。"
-          },
-          {
-            id: "ct5",
-            title: "运营最常见的 AI 编程误解有哪些",
-            brief: "通过误区切入降低理解门槛，容易带来评论区补充与争议。"
+            id: "wechat-topic-2",
+            title: "高阅读公众号都在怎样包装网文出海案例",
+            brief: "重点拆解标题、摘要和案例呈现方式，帮助选题监控页更快定位可借鉴方向。"
           }
         ]
       }
     ],
     settings: {
       platforms: [
-        { name: "抖音", status: "已接入", cadence: "每日采集热门前 50" },
-        { name: "小红书", status: "已接入", cadence: "每日采集热门前 30" },
-        { name: "微博", status: "已接入", cadence: "按关键词热帖抓取" },
-        { name: "B站", status: "已接入", cadence: "每日采集热视频前 20" }
+        { name: "公众号", status: "已接入", cadence: "按关键词实时拉取公众号文章" }
       ],
-      keywords: ["Claude Code", "AI 编程", "开发工作流", "运营自动化", "提示词工程", "原型生成"],
-      creators: [
-        { name: "Prompt 工程所", platform: "抖音", note: "高频发布短实操" },
-        { name: "工具流研究员", platform: "小红书", note: "偏对比评测" },
-        { name: "运营自动化实验室", platform: "B站", note: "长视频案例拆解" },
-        { name: "内容钩子观察局", platform: "微博", note: "擅长标题结构" },
-        { name: "增长实验室", platform: "B站", note: "复盘型内容稳定" }
-      ],
+      keywords: ["网文出海"],
+      creators: [],
       schedule: {
-        runTime: "每天 08:00",
+        runTime: "页面打开时可手动刷新",
         timezone: "Australia/Sydney",
-        scope: "自动采集各平台内容，筛选热门前 10 并生成 AI 报告"
+        scope: "以关键词“网文出海”查询近 7 天公众号文章"
       }
+    },
+    liveSource: {
+      type: "wechat",
+      keyword: "网文出海"
     }
   },
   {
     id: "vibecoding",
     name: "VibeCoding 选题监控",
-    summary: "观察创作者如何把 vibe coding 做成面向大众的叙事内容",
+    summary: "观察创作者如何把 vibe coding 做成面向大众的叙事内容。",
     runStatus: "等待明日 08:00 自动运行",
     lastRun: "3 月 29 日 08:00",
     platformCount: 4,
@@ -392,7 +229,7 @@ const categories: MonitoringCategory[] = [
   {
     id: "ai-overseas",
     name: "AI 出海内容监控",
-    summary: "关注 AI SaaS 出海案例、增长素材与社媒传播热点",
+    summary: "关注 AI SaaS 出海案例、增长素材与社媒传播热点。",
     runStatus: "今日 08:00 已自动运行",
     lastRun: "3 月 30 日 08:00",
     platformCount: 4,
@@ -451,7 +288,8 @@ const categories: MonitoringCategory[] = [
         date: "3 月 30 日",
         title: "AI 出海方向日报",
         preview: "“真实增长结果”比“增长技巧”更能驱动高意向用户停留。",
-        hotSummary: "今天的高热内容普遍强化了营收、用户量和转化率等结果信号，说明市场已经从概念期转向结果验证期。",
+        hotSummary:
+          "今天的高热内容普遍强化了营收、用户量和转化率等结果信号，说明市场已经从概念期转向结果验证期。",
         aiTakeaways: [
           "结果型叙事对高质量用户更有吸引力。",
           "网站拆解与案例拆解可以互相联动，形成持续内容主题。",

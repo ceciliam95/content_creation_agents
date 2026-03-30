@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ContentTab } from "@/components/content-tab";
 import {
+  type ContentDay,
   type DashboardTab,
   type MonitoringCategory,
   type Platform,
@@ -14,14 +15,49 @@ import {
 } from "@/components/mock-data";
 import { ReportsTab } from "@/components/reports-tab";
 import { SettingsTab } from "@/components/settings-tab";
+import { shouldUseWechatLiveSource } from "@/lib/wechat-monitor";
 
 const tabs: DashboardTab[] = ["内容", "选题分析与报告", "监控设置"];
+
+type WechatArticlesApiResponse = {
+  keyword: string;
+  total: number;
+  page: number;
+  totalPages: number;
+  days: ContentDay[];
+};
 
 export function Dashboard() {
   const categories = getCategories();
   const [activeCategoryId, setActiveCategoryId] = useState(getDefaultCategory().id);
-  const activeCategory =
+  const [wechatKeyword, setWechatKeyword] = useState("网文出海");
+  const [keywordInput, setKeywordInput] = useState("网文出海");
+
+  const activeCategoryBase =
     categories.find((category) => category.id === activeCategoryId) ?? getDefaultCategory();
+  const activeCategory = useMemo(
+    () =>
+      activeCategoryBase.id === "wechat-monitor"
+        ? {
+            ...activeCategoryBase,
+            keywordCount: 1,
+            summary: `按关键词监控公众号文章热度，当前追踪词为“${wechatKeyword}”。`,
+            settings: {
+              ...activeCategoryBase.settings,
+              keywords: [wechatKeyword],
+              schedule: {
+                ...activeCategoryBase.settings.schedule,
+                scope: `以关键词“${wechatKeyword}”查询近 7 天公众号文章`
+              }
+            },
+            liveSource: {
+              type: "wechat" as const,
+              keyword: wechatKeyword
+            }
+          }
+        : activeCategoryBase,
+    [activeCategoryBase, wechatKeyword]
+  );
 
   const [activeTab, setActiveTab] = useState<DashboardTab>("内容");
   const [activePlatform, setActivePlatform] = useState<Platform>(
@@ -35,6 +71,10 @@ export function Dashboard() {
   );
   const [reportMode, setReportMode] = useState<"日报" | "最近 7 天汇总">("日报");
 
+  const [liveContentDays, setLiveContentDays] = useState<Record<string, ContentDay[]>>({});
+  const [liveLoading, setLiveLoading] = useState<Record<string, boolean>>({});
+  const [liveErrors, setLiveErrors] = useState<Record<string, string | null>>({});
+
   useEffect(() => {
     setActivePlatform(getDefaultPlatform(activeCategory));
     setActiveContentDate(getDefaultContentDate(activeCategory));
@@ -42,6 +82,116 @@ export function Dashboard() {
     setReportMode("日报");
     setActiveTab("内容");
   }, [activeCategoryId, activeCategory]);
+
+  useEffect(() => {
+    if (shouldUseWechatLiveSource(activeCategory.id)) {
+      setKeywordInput(wechatKeyword);
+    }
+  }, [activeCategory.id, wechatKeyword]);
+
+  useEffect(() => {
+    if (
+      !activeCategory.liveSource ||
+      activeCategory.liveSource.type !== "wechat" ||
+      !shouldUseWechatLiveSource(activeCategory.id)
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function loadWechatArticles(category: MonitoringCategory) {
+      setLiveLoading((current) => ({ ...current, [category.id]: true }));
+      setLiveErrors((current) => ({ ...current, [category.id]: null }));
+
+      try {
+        const params = new URLSearchParams({
+          kw: category.liveSource?.keyword ?? "网文出海"
+        });
+        const response = await fetch(`/api/wechat-articles?${params.toString()}`, {
+          signal: controller.signal
+        });
+
+        if (!response.ok) {
+          const error = (await response.json().catch(() => null)) as { message?: string } | null;
+          throw new Error(error?.message ?? "公众号接口请求失败。");
+        }
+
+        const payload = (await response.json()) as WechatArticlesApiResponse;
+
+        setLiveContentDays((current) => ({
+          ...current,
+          [category.id]: payload.days
+        }));
+
+        if (payload.days[0]?.date) {
+          setActiveContentDate(payload.days[0].date);
+        }
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setLiveErrors((current) => ({
+          ...current,
+          [category.id]:
+            error instanceof Error ? error.message : "公众号文章拉取失败。"
+        }));
+      } finally {
+        if (!controller.signal.aborted) {
+          setLiveLoading((current) => ({ ...current, [category.id]: false }));
+        }
+      }
+    }
+
+    void loadWechatArticles(activeCategory);
+
+    return () => {
+      controller.abort();
+    };
+  }, [activeCategory]);
+
+  const currentContentDays =
+    activeCategory.liveSource?.type === "wechat"
+      ? liveContentDays[activeCategory.id] ?? []
+      : activeCategory.contentDays;
+
+  const currentCategoryContentDate =
+    currentContentDays.find((day) => day.date === activeContentDate)?.date ??
+    currentContentDays[0]?.date ??
+    "";
+
+  const currentPlatforms =
+    currentContentDays.length > 0
+      ? Array.from(new Set(currentContentDays.flatMap((day) => day.items.map((item) => item.platform))))
+      : activeCategory.settings.platforms.map((platform) => platform.name);
+
+  const metricsContentDay = currentContentDays[0];
+  const isWechatCategory = shouldUseWechatLiveSource(activeCategory.id);
+
+  function handleKeywordSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!isWechatCategory) {
+      return;
+    }
+
+    const nextKeyword = keywordInput.trim();
+
+    if (!nextKeyword || nextKeyword === wechatKeyword) {
+      return;
+    }
+
+    setWechatKeyword(nextKeyword);
+    setLiveContentDays((current) => ({
+      ...current,
+      [activeCategory.id]: []
+    }));
+    setLiveErrors((current) => ({
+      ...current,
+      [activeCategory.id]: null
+    }));
+  }
 
   return (
     <div className="page-shell">
@@ -108,11 +258,11 @@ export function Dashboard() {
               <div className="hero-side">
                 <div className="hero-note">
                   <strong>每日自动运行</strong>
-                  <p>{activeCategory.settings.schedule.runTime} 自动抓取并分析内容</p>
+                  <p>{activeCategory.settings.schedule.runTime}</p>
                 </div>
                 <div className="hero-note">
-                  <strong>AI 输出</strong>
-                  <p>基于热门前 10 内容生成日报、热点总结与选题建议</p>
+                  <strong>默认关键词</strong>
+                  <p>{activeCategory.settings.keywords.join(" / ")}</p>
                 </div>
                 <div className="hero-note">
                   <strong>当前状态</strong>
@@ -125,15 +275,11 @@ export function Dashboard() {
           <section className="metrics-row">
             <article className="metric-card">
               <span className="metric-label">最近采集内容</span>
-              <span className="metric-value">
-                {activeCategory.contentDays[0]?.totalItems ?? 0} 条
-              </span>
+              <span className="metric-value">{metricsContentDay?.totalItems ?? 0} 条</span>
             </article>
             <article className="metric-card">
               <span className="metric-label">最近爆款内容</span>
-              <span className="metric-value">
-                {activeCategory.contentDays[0]?.breakoutCount ?? 0} 条
-              </span>
+              <span className="metric-value">{metricsContentDay?.breakoutCount ?? 0} 条</span>
             </article>
             <article className="metric-card">
               <span className="metric-label">最新报告日期</span>
@@ -158,14 +304,45 @@ export function Dashboard() {
             ))}
           </div>
 
+          <section className="keyword-toolbar">
+            <div className="keyword-toolbar-copy">
+              <strong>关键词搜索</strong>
+              <p className="section-copy">
+                {isWechatCategory
+                  ? `回车后会更新“公众号文章监控”的当前关键词，并重新拉取公众号文章。当前关键词：${wechatKeyword}`
+                  : "该搜索仅作用于“公众号文章监控”分类。"}
+              </p>
+            </div>
+            <form className="keyword-search-form" onSubmit={handleKeywordSubmit}>
+              <input
+                className="keyword-search-input"
+                type="text"
+                value={keywordInput}
+                onChange={(event) => setKeywordInput(event.target.value)}
+                placeholder="输入关键词后按回车，例如：网文出海"
+                disabled={!isWechatCategory}
+              />
+              <button
+                className="keyword-search-button"
+                type="submit"
+                disabled={!isWechatCategory || liveLoading[activeCategory.id]}
+              >
+                {liveLoading[activeCategory.id] ? "搜索中..." : "回车搜索"}
+              </button>
+            </form>
+          </section>
+
           {activeTab === "内容" && (
             <ContentTab
-              platforms={activeCategory.settings.platforms.map((platform) => platform.name)}
+              platforms={currentPlatforms}
               selectedPlatform={activePlatform}
               onPlatformChange={setActivePlatform}
-              days={activeCategory.contentDays}
-              selectedDate={activeContentDate}
+              days={currentContentDays}
+              selectedDate={currentCategoryContentDate}
               onDateChange={setActiveContentDate}
+              keyword={activeCategory.liveSource?.keyword}
+              isLoading={liveLoading[activeCategory.id]}
+              errorMessage={liveErrors[activeCategory.id]}
             />
           )}
 
@@ -185,4 +362,3 @@ export function Dashboard() {
     </div>
   );
 }
-
