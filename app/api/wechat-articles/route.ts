@@ -3,6 +3,10 @@ import {
   buildWechatArticlesRequest,
   type WechatApiResponse
 } from "@/lib/wechat-monitor";
+import {
+  formatMonitorRequestError,
+  formatMonitorStatusError
+} from "@/lib/search-feedback";
 import { saveWechatSearchResult } from "@/lib/search-history";
 
 const endpoint = "http://cn8n.com/p4/fbmain/monitor/v3/kw_search";
@@ -37,7 +41,7 @@ export async function GET(request: NextRequest) {
 
     if (!response.ok) {
       return NextResponse.json(
-        { message: `Wechat monitor request failed with status ${response.status}.` },
+        { message: formatMonitorStatusError("wechat", response.status) },
         { status: response.status }
       );
     }
@@ -60,14 +64,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       searchId: saved.searchId,
       keyword,
+      sourceType: "wechat",
       total: saved.total,
       page: saved.page,
       totalPages: saved.totalPages,
       days: saved.days
     });
   } catch (error) {
-    const message =
+    const rawMessage =
       error instanceof Error ? error.message : "Unexpected request error.";
+    const message = formatMonitorRequestError("wechat", rawMessage);
 
     return NextResponse.json({ message }, { status: 500 });
   }

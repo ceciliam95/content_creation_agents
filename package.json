@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "tsx --test tests/wechat-monitor.test.ts tests/xiaohongshu-monitor.test.ts tests/search-history.test.ts"
+    "test": "tsx --test tests/wechat-monitor.test.ts tests/xiaohongshu-monitor.test.ts tests/search-history.test.ts tests/analysis-tasks.test.ts tests/search-feedback.test.ts"
   },
   "dependencies": {
     "next": "15.2.4",

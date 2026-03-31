@@ -5,7 +5,6 @@ import { ContentTab } from "@/components/content-tab";
 import {
   type ContentDay,
   type DashboardTab,
-  type MonitoringCategory,
   type Platform,
   getCategories,
   getDefaultCategory,
@@ -15,6 +14,10 @@ import {
 } from "@/components/mock-data";
 import { ReportsTab } from "@/components/reports-tab";
 import { SettingsTab } from "@/components/settings-tab";
+import {
+  getBlockingContentErrorMessage,
+  getInlineSearchFeedback
+} from "@/lib/search-feedback";
 
 const tabs: DashboardTab[] = ["内容", "选题分析与报告", "监控设置"];
 
@@ -56,6 +59,36 @@ type SearchApiResponse = {
   sourceType: SourceType;
   total?: number;
   days: ContentDay[];
+};
+
+type AnalysisTaskResponse = {
+  tasks: Array<{
+    id: number;
+    sourceType: "wechat" | "xiaohongshu";
+    status: string;
+    selectedCount: number;
+    createdAt: string;
+    itemSummaries: Array<{
+      summary: string;
+      keywords: string[];
+      keyPoints: string[];
+      highlights: string[];
+      angles: string[];
+      risks: string[];
+    }>;
+    report: {
+      reportStatus: string;
+      summary: string;
+      hotInsights: string;
+    } | null;
+    suggestions: Array<{
+      title: string;
+      brief: string;
+      whyNow: string;
+      entryPoint: string;
+      referenceItemIds: string[];
+    }>;
+  }>;
 };
 
 function formatHistoryTime(value: string) {
@@ -115,6 +148,9 @@ export function Dashboard() {
   const [activeSearchDetail, setActiveSearchDetail] = useState<SearchHistoryDetail | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [analysisTasks, setAnalysisTasks] = useState<AnalysisTaskResponse["tasks"]>([]);
+  const [activeAnalysisTaskId, setActiveAnalysisTaskId] = useState<number | null>(null);
 
   const activeCategoryBase =
     categories.find((category) => category.id === activeCategoryId) ?? getDefaultCategory();
@@ -230,6 +266,7 @@ export function Dashboard() {
     setActiveReportDate(getDefaultReportDate(activeCategoryBase));
     setReportMode("日报");
     setActiveTab("内容");
+    setSelectedItemIds([]);
   }, [activeCategoryBase, activeCategoryId]);
 
   useEffect(() => {
@@ -237,6 +274,30 @@ export function Dashboard() {
       void loadSearchHistory(activeSearchId, activeCategoryType);
     }
   }, [activeCategoryType, activeSearchId, loadSearchHistory]);
+
+  useEffect(() => {
+    async function loadTasks() {
+      if (!activeSearchDetail?.search.id) {
+        setAnalysisTasks([]);
+        setActiveAnalysisTaskId(null);
+        return;
+      }
+
+      const response = await fetch(`/api/analysis-tasks?searchId=${activeSearchDetail.search.id}`, {
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = (await response.json()) as AnalysisTaskResponse;
+      setAnalysisTasks(payload.tasks);
+      setActiveAnalysisTaskId(payload.tasks[0]?.id ?? null);
+    }
+
+    void loadTasks();
+  }, [activeSearchDetail?.search.id]);
 
   const currentContentDays =
     activeCategoryType && activeSearchDetail?.search.sourceType === activeCategoryType
@@ -257,6 +318,8 @@ export function Dashboard() {
 
   const metricsContentDay = currentContentDays[0];
   const currentHistoryMeta = historyItems.find((item) => item.id === activeSearchId) ?? null;
+  const blockingContentError = getBlockingContentErrorMessage(searchError, currentContentDays);
+  const inlineSearchFeedback = getInlineSearchFeedback(searchError);
 
   async function runSourceSearch(source: SourceType, keyword: string) {
     const route =
@@ -304,8 +367,64 @@ export function Dashboard() {
         results.find((result) => result.sourceType === preferredSource) ?? results[0];
 
       await loadSearchHistory(preferredResult?.searchId ?? null, preferredSource);
+      setSelectedItemIds([]);
     } catch (error) {
       setSearchError(error instanceof Error ? error.message : "关键词采集失败。");
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
+  function toggleSelectedItem(itemId: string) {
+    setSelectedItemIds((current) =>
+      current.includes(itemId)
+        ? current.filter((id) => id !== itemId)
+        : [...current, itemId]
+    );
+  }
+
+  async function handleAnalyzeSelection() {
+    if (!activeSearchDetail || !currentHistoryMeta || selectedItemIds.length === 0) {
+      return;
+    }
+
+    setSearchLoading(true);
+    setSearchError(null);
+
+    try {
+      const activeItems = currentContentDays
+        .flatMap((day) => day.items)
+        .filter((item) => selectedItemIds.includes(item.id));
+
+      const response = await fetch("/api/analysis-tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          searchId: activeSearchDetail.search.id,
+          sourceType: currentHistoryMeta.sourceType,
+          keyword: activeSearchDetail.search.keyword,
+          selectedItems: activeItems.map((item) => ({
+            contentItemId: item.id,
+            contentTitle: item.title,
+            originalUrl: item.url || ""
+          }))
+        })
+      });
+
+      if (!response.ok) {
+        const error = (await response.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(error?.message ?? "分析任务创建失败。");
+      }
+
+      const payload = (await response.json()) as { taskId: number; tasks: AnalysisTaskResponse["tasks"] };
+      setAnalysisTasks(payload.tasks);
+      setActiveAnalysisTaskId(payload.taskId);
+      setActiveTab("选题分析与报告");
+      setSelectedItemIds([]);
+    } catch (error) {
+      setSearchError(error instanceof Error ? error.message : "分析任务创建失败。");
     } finally {
       setSearchLoading(false);
     }
@@ -512,6 +631,13 @@ export function Dashboard() {
             </form>
           </section>
 
+          {inlineSearchFeedback ? (
+            <section className="inline-feedback-banner" role="status">
+              <strong>本次搜索没有成功</strong>
+              <p>{inlineSearchFeedback}</p>
+            </section>
+          ) : null}
+
           {activeTab === "内容" && (
             <ContentTab
               platforms={currentPlatforms}
@@ -522,7 +648,17 @@ export function Dashboard() {
               onDateChange={setActiveContentDate}
               keyword={globalKeyword}
               isLoading={searchLoading}
-              errorMessage={searchError}
+              errorMessage={blockingContentError}
+              inlineNotice={
+                inlineSearchFeedback && !blockingContentError
+                  ? "已保留上一批成功加载的内容，你可以继续勾选并发起分析。"
+                  : null
+              }
+              selectedItemIds={selectedItemIds}
+              onToggleItem={toggleSelectedItem}
+              onClearSelection={() => setSelectedItemIds([])}
+              onAnalyzeSelection={handleAnalyzeSelection}
+              analyzeDisabled={searchLoading}
             />
           )}
 
@@ -543,6 +679,9 @@ export function Dashboard() {
                     }
                   : undefined
               }
+              analysisTasks={analysisTasks}
+              activeTaskId={activeAnalysisTaskId}
+              onTaskSelect={setActiveAnalysisTaskId}
             />
           )}
 

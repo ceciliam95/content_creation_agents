@@ -18,6 +18,26 @@ export async function openDatabase(dbPath = defaultDbPath) {
   });
 }
 
+async function ensureColumns(
+  db: Database,
+  tableName: string,
+  columnDefinitions: Record<string, string>
+) {
+  const columns = await db.all<Array<{ name: string }>>(
+    `PRAGMA table_info(${tableName})`
+  );
+  const existingColumns = new Set(columns.map((column) => column.name));
+
+  for (const [columnName, definition] of Object.entries(columnDefinitions)) {
+    if (!existingColumns.has(columnName)) {
+      await db.exec(`
+        ALTER TABLE ${tableName}
+        ADD COLUMN ${columnName} ${definition};
+      `);
+    }
+  }
+}
+
 export async function initializeDatabase(db: Database) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS keyword_searches (
@@ -79,6 +99,7 @@ export async function initializeDatabase(db: Database) {
     CREATE TABLE IF NOT EXISTS topic_reports (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       search_id INTEGER NOT NULL,
+      task_id INTEGER,
       report_status TEXT NOT NULL,
       summary TEXT NOT NULL DEFAULT '',
       hot_insights TEXT NOT NULL DEFAULT '',
@@ -92,10 +113,85 @@ export async function initializeDatabase(db: Database) {
       report_id INTEGER NOT NULL,
       title TEXT NOT NULL,
       brief TEXT NOT NULL,
+      why_now TEXT NOT NULL DEFAULT '',
+      entry_point TEXT NOT NULL DEFAULT '',
+      reference_items_json TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL,
       FOREIGN KEY(report_id) REFERENCES topic_reports(id)
     );
+
+    CREATE TABLE IF NOT EXISTS analysis_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      search_id INTEGER NOT NULL,
+      source_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      selected_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(search_id) REFERENCES keyword_searches(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS analysis_task_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL,
+      content_source_type TEXT NOT NULL,
+      content_item_id TEXT NOT NULL,
+      content_title TEXT NOT NULL,
+      original_url TEXT NOT NULL DEFAULT '',
+      full_text_status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(task_id) REFERENCES analysis_tasks(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS analysis_item_summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_item_id INTEGER NOT NULL,
+      summary TEXT NOT NULL,
+      keywords_json TEXT NOT NULL,
+      key_points_json TEXT NOT NULL,
+      highlights_json TEXT NOT NULL,
+      angles_json TEXT NOT NULL,
+      risks_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(task_item_id) REFERENCES analysis_task_items(id)
+    );
   `);
+
+  await ensureColumns(db, "topic_reports", {
+    task_id: "INTEGER"
+  });
+
+  await ensureColumns(db, "topic_suggestions", {
+    why_now: "TEXT NOT NULL DEFAULT ''",
+    entry_point: "TEXT NOT NULL DEFAULT ''",
+    reference_items_json: "TEXT NOT NULL DEFAULT '[]'"
+  });
+
+  await ensureColumns(db, "analysis_tasks", {
+    source_type: "TEXT NOT NULL DEFAULT 'wechat'",
+    status: "TEXT NOT NULL DEFAULT 'pending'",
+    selected_count: "INTEGER NOT NULL DEFAULT 0",
+    created_at: "TEXT NOT NULL DEFAULT ''",
+    updated_at: "TEXT NOT NULL DEFAULT ''"
+  });
+
+  await ensureColumns(db, "analysis_task_items", {
+    content_source_type: "TEXT NOT NULL DEFAULT 'wechat'",
+    content_item_id: "TEXT NOT NULL DEFAULT ''",
+    content_title: "TEXT NOT NULL DEFAULT ''",
+    original_url: "TEXT NOT NULL DEFAULT ''",
+    full_text_status: "TEXT NOT NULL DEFAULT 'pending'",
+    created_at: "TEXT NOT NULL DEFAULT ''"
+  });
+
+  await ensureColumns(db, "analysis_item_summaries", {
+    keywords_json: "TEXT NOT NULL DEFAULT '[]'",
+    key_points_json: "TEXT NOT NULL DEFAULT '[]'",
+    highlights_json: "TEXT NOT NULL DEFAULT '[]'",
+    angles_json: "TEXT NOT NULL DEFAULT '[]'",
+    risks_json: "TEXT NOT NULL DEFAULT '[]'",
+    created_at: "TEXT NOT NULL DEFAULT ''"
+  });
 }
 
 export async function getInitializedDatabase(dbPath?: string) {

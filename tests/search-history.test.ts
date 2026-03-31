@@ -11,6 +11,7 @@ import {
   saveWechatSearchResult,
   saveXiaohongshuSearchResult
 } from "@/lib/search-history";
+import { openDatabase, initializeDatabase } from "@/lib/db";
 import type { WechatApiResponse } from "@/lib/wechat-monitor";
 import type { XiaohongshuApiResponse } from "@/lib/xiaohongshu-monitor";
 
@@ -63,6 +64,64 @@ test("initializeSearchHistoryDb creates the sqlite file and schema", async () =>
   await initializeSearchHistoryDb(dbPath);
 
   assert.equal(fs.existsSync(dbPath), true);
+});
+
+test("initializeSearchHistoryDb migrates a legacy topic_reports table to add task_id", async () => {
+  const dbPath = createTempDbPath();
+  const db = await openDatabase(dbPath);
+
+  await db.exec(`
+    CREATE TABLE topic_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      search_id INTEGER NOT NULL,
+      report_status TEXT NOT NULL,
+      summary TEXT NOT NULL DEFAULT '',
+      hot_insights TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+  await db.close();
+
+  const initializedDb = await openDatabase(dbPath);
+  await initializeDatabase(initializedDb);
+  await initializedDb.close();
+
+  const migratedDb = await openDatabase(dbPath);
+  const columns = await migratedDb.all<Array<{ name: string }>>("PRAGMA table_info(topic_reports)");
+  await migratedDb.close();
+
+  assert.equal(columns.some((column) => column.name === "task_id"), true);
+});
+
+test("initializeSearchHistoryDb migrates a legacy topic_suggestions table to add analysis columns", async () => {
+  const dbPath = createTempDbPath();
+  const db = await openDatabase(dbPath);
+
+  await db.exec(`
+    CREATE TABLE topic_suggestions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      brief TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+  `);
+  await db.close();
+
+  const initializedDb = await openDatabase(dbPath);
+  await initializeDatabase(initializedDb);
+  await initializedDb.close();
+
+  const migratedDb = await openDatabase(dbPath);
+  const columns = await migratedDb.all<Array<{ name: string }>>(
+    "PRAGMA table_info(topic_suggestions)"
+  );
+  await migratedDb.close();
+
+  assert.equal(columns.some((column) => column.name === "why_now"), true);
+  assert.equal(columns.some((column) => column.name === "entry_point"), true);
+  assert.equal(columns.some((column) => column.name === "reference_items_json"), true);
 });
 
 test("saveWechatSearchResult persists a keyword search and its linked articles", async () => {

@@ -12,6 +12,12 @@ type ContentTabProps = {
   keyword?: string;
   isLoading?: boolean;
   errorMessage?: string | null;
+  inlineNotice?: string | null;
+  selectedItemIds?: string[];
+  onToggleItem?: (itemId: string) => void;
+  onClearSelection?: () => void;
+  onAnalyzeSelection?: () => void;
+  analyzeDisabled?: boolean;
 };
 
 export function ContentTab({
@@ -23,7 +29,13 @@ export function ContentTab({
   onDateChange,
   keyword,
   isLoading = false,
-  errorMessage
+  errorMessage,
+  inlineNotice,
+  selectedItemIds = [],
+  onToggleItem,
+  onClearSelection,
+  onAnalyzeSelection,
+  analyzeDisabled = false
 }: ContentTabProps) {
   const activeDay = days.find((day) => day.date === selectedDate) ?? days[0];
   const filteredItems = (activeDay?.items ?? []).filter(
@@ -37,7 +49,7 @@ export function ContentTab({
           <h3>内容时间线</h3>
           <p className="section-copy">
             {keyword
-              ? `当前按关键词“${keyword}”拉取公众号文章，并按日期卡片引导查看高热内容。`
+              ? `当前按关键词“${keyword}”查看采集结果，可多选内容后进行两阶段 AI 选题分析。`
               : "用横向日期卡片替代日历输入，让用户优先看到有内容、有爆款的日期。"}
           </p>
         </div>
@@ -57,20 +69,26 @@ export function ContentTab({
         </div>
       </div>
 
+      {inlineNotice ? (
+        <div className="inline-notice" role="status">
+          {inlineNotice}
+        </div>
+      ) : null}
+
       {isLoading ? (
         <div className="content-card">
-          <h4>正在拉取公众号文章</h4>
-          <p>首次进入该分类时会通过服务端代理请求真实数据，请稍候。</p>
+          <h4>正在加载内容</h4>
+          <p>请稍候，系统正在拉取或分析当前关键词下的内容。</p>
         </div>
       ) : errorMessage ? (
         <div className="content-card">
-          <h4>公众号文章加载失败</h4>
+          <h4>内容加载失败</h4>
           <p>{errorMessage}</p>
         </div>
       ) : days.length === 0 ? (
         <div className="content-card">
-          <h4>没有查到匹配文章</h4>
-          <p>当前关键词下近 7 天没有返回公众号文章，可以稍后更换关键词或重试。</p>
+          <h4>没有查到匹配内容</h4>
+          <p>当前关键词下没有返回内容，可以稍后更换关键词或重试。</p>
         </div>
       ) : (
         <>
@@ -111,18 +129,14 @@ export function ContentTab({
                   <span className="metric-value">{activeDay?.breakoutCount ?? 0}</span>
                 </div>
               </div>
-              <p className="helper-text">
-                平台筛选保持平铺显示，适合运营人员高频在不同平台之间来回切换。
-              </p>
+              <p className="helper-text">勾选想分析的内容后，底部会出现“进行分析”操作栏。</p>
             </div>
 
             <div>
               <div className="split-header">
                 <div>
                   <h4>{selectedPlatform} 热门内容</h4>
-                  <p className="section-copy">
-                    默认按热度排序，方便直接查看当天最值得拆解的内容。
-                  </p>
+                  <p className="section-copy">默认按热度排序，支持多选后进行结构化选题分析。</p>
                 </div>
               </div>
               <div className="content-list">
@@ -130,32 +144,46 @@ export function ContentTab({
                   filteredItems
                     .slice()
                     .sort((left, right) => right.heat - left.heat)
-                    .map((item) => (
-                      <article key={item.id} className="content-card">
-                        <div className="content-meta">
-                          <span className="small-pill">{item.platform}</span>
-                          <span>{item.author}</span>
-                          <span>{item.publishTime}</span>
-                          <span>热度 {item.heat}</span>
-                        </div>
-                        <h4>{item.title}</h4>
-                        <p>{item.summary}</p>
-                        <div className="tag-row">
-                          {item.tags.map((tag) => (
-                            <span key={tag} className="tag">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                        {item.url ? (
-                          <div className="helper-text">
-                            <a href={item.url} target="_blank" rel="noreferrer">
-                              查看原文
-                            </a>
+                    .map((item) => {
+                      const checked = selectedItemIds.includes(item.id);
+
+                      return (
+                        <article key={item.id} className="content-card">
+                          <div className="content-select-row">
+                            <label className="content-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => onToggleItem?.(item.id)}
+                              />
+                              <span>选择用于分析</span>
+                            </label>
                           </div>
-                        ) : null}
-                      </article>
-                    ))
+                          <div className="content-meta">
+                            <span className="small-pill">{item.platform}</span>
+                            <span>{item.author}</span>
+                            <span>{item.publishTime}</span>
+                            <span>热度 {item.heat}</span>
+                          </div>
+                          <h4>{item.title}</h4>
+                          <p>{item.summary}</p>
+                          <div className="tag-row">
+                            {item.tags.map((tag) => (
+                              <span key={tag} className="tag">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                          {item.url ? (
+                            <div className="helper-text">
+                              <a href={item.url} target="_blank" rel="noreferrer">
+                                查看原文
+                              </a>
+                            </div>
+                          ) : null}
+                        </article>
+                      );
+                    })
                 ) : (
                   <div className="content-card">
                     <h4>这个平台当天没有采集到重点内容</h4>
@@ -165,6 +193,25 @@ export function ContentTab({
               </div>
             </div>
           </div>
+
+          {selectedItemIds.length > 0 ? (
+            <div className="analysis-action-bar">
+              <strong>已选 {selectedItemIds.length} 篇内容</strong>
+              <div className="analysis-action-buttons">
+                <button type="button" className="platform-chip" onClick={onClearSelection}>
+                  清空选择
+                </button>
+                <button
+                  type="button"
+                  className="keyword-search-button"
+                  disabled={analyzeDisabled}
+                  onClick={onAnalyzeSelection}
+                >
+                  进行分析
+                </button>
+              </div>
+            </div>
+          ) : null}
         </>
       )}
     </div>
