@@ -53,6 +53,29 @@ export async function initializeDatabase(db: Database) {
       FOREIGN KEY(search_id) REFERENCES keyword_searches(id)
     );
 
+    CREATE TABLE IF NOT EXISTS xiaohongshu_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      search_id INTEGER NOT NULL,
+      note_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      desc TEXT NOT NULL DEFAULT '',
+      author_name TEXT NOT NULL,
+      author_id TEXT NOT NULL,
+      author_avatar TEXT NOT NULL DEFAULT '',
+      liked_count INTEGER NOT NULL DEFAULT 0,
+      comments_count INTEGER NOT NULL DEFAULT 0,
+      collected_count INTEGER NOT NULL DEFAULT 0,
+      shared_count INTEGER NOT NULL DEFAULT 0,
+      note_type TEXT NOT NULL DEFAULT '',
+      tag_title TEXT NOT NULL DEFAULT '',
+      cover_url TEXT NOT NULL DEFAULT '',
+      publish_time INTEGER NOT NULL,
+      publish_time_str TEXT NOT NULL,
+      raw_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(search_id) REFERENCES keyword_searches(id)
+    );
+
     CREATE TABLE IF NOT EXISTS topic_reports (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       search_id INTEGER NOT NULL,

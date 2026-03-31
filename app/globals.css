@@ -432,6 +432,15 @@ a {
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
+.keyword-search-select {
+  min-width: 132px;
+  padding: 13px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--text);
+}
+
 .keyword-search-input:focus {
   border-color: rgba(30, 78, 216, 0.4);
   box-shadow: 0 0 0 4px rgba(30, 78, 216, 0.1);

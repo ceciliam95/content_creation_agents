@@ -15,6 +15,7 @@ type ReportsTabProps = {
     keyword: string;
     createdAt: string;
     reportStatus: string;
+    sourceLabel: string;
   };
 };
 
@@ -49,7 +50,8 @@ export function ReportsTab({
             <div>
               <h4>该次历史查询的选题信息尚未生成</h4>
               <p className="report-copy">
-                关键词“{historyContext.keyword}”已保存，后续可以直接基于这次查询结果生成选题分析与建议。
+                关键词“{historyContext.keyword}”的{historyContext.sourceLabel}
+                结果已保存，后续可以直接基于这次查询结果生成选题分析与建议。
               </p>
             </div>
             <span className="small-pill">{historyContext.createdAt}</span>
