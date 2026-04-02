@@ -1,0 +1,26 @@
+{
+  "name": "content-distribution-agent",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "tsx --test tests/mock-data.test.ts tests/workspace-state.test.ts tests/workspace-config.test.ts tests/settings-defaults.test.ts tests/ai-config.test.ts tests/wechat-generation.test.ts tests/generate-wechat-route.test.ts tests/content-factory-state.test.ts"
+  },
+  "dependencies": {
+    "next": "15.2.4",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.13.10",
+    "@types/react": "19.0.10",
+    "@types/react-dom": "19.0.4",
+    "eslint": "9.22.0",
+    "eslint-config-next": "15.2.4",
+    "tsx": "4.19.3",
+    "typescript": "5.8.2"
+  }
+}

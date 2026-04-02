@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Content Factory Agent Preview</title>
+  <style>
+    html, body { margin: 0; min-height: 100%; font-family: "Segoe UI","PingFang SC",sans-serif; background:#f4f6fb; color:#132033; }
+    * { box-sizing: border-box; }
+    .topnav { display:flex; justify-content:space-between; align-items:center; padding:18px 28px; border-bottom:1px solid #d7e0eb; background:#fff; position:sticky; top:0; }
+    .nav-actions { display:flex; gap:12px; }
+    .nav-btn, .chip, .tab-button, .history-card, .primary-button, .action-btn { cursor:pointer; }
+    .nav-btn, .chip, .tab-button, .action-btn { padding:10px 14px; border-radius:999px; border:1px solid #ccd7e5; background:#fff; }
+    .nav-btn.active, .chip.active, .tab-button.active { background:#1d4ed8; color:#fff; border-color:#1d4ed8; }
+    .hero-composer { width:min(920px, calc(100% - 48px)); margin:56px auto; padding:40px; background:#fff; border:1px solid #d7e0eb; border-radius:28px; box-shadow:0 20px 70px rgba(17,24,39,.08); }
+    .eyebrow { margin:0 0 8px; font-size:12px; text-transform:uppercase; letter-spacing:.12em; color:#62748a; }
+    .lead { color:#5d6c80; margin-bottom:0; }
+    .request-box { width:100%; min-height:220px; margin-top:20px; padding:18px; border-radius:18px; border:1px solid #d7e0eb; resize:none; background:#fbfcfe; }
+    .chip-row, .tab-row, .action-row { display:flex; flex-wrap:wrap; gap:12px; }
+    .chip-row { margin-top:20px; }
+    .primary-button { margin-top:24px; padding:14px 20px; border-radius:16px; border:0; background:#1d4ed8; color:#fff; font-weight:700; }
+    .workspace-layout { display:grid; grid-template-columns:280px minmax(0,1fr); min-height:calc(100vh - 66px); }
+    .history-sidebar { padding:24px; background:#fff; border-right:1px solid #dbe2ec; }
+    .history-list { display:grid; gap:12px; margin-top:12px; }
+    .history-card { display:grid; gap:6px; text-align:left; padding:14px; border-radius:16px; border:1px solid #dbe2ec; background:#f8fafc; }
+    .history-card.active { background:#e9f1ff; border-color:#aac5ff; }
+    .workspace-main { padding:24px; }
+    .workspace-toolbar { display:flex; justify-content:space-between; gap:16px; align-items:center; }
+    .editor-surface { margin-top:20px; padding:24px; background:#fff; border:1px solid #dbe2ec; border-radius:24px; }
+    .field-input, .field-area { width:100%; margin-bottom:16px; padding:14px 16px; border-radius:16px; border:1px solid #d7e0eb; background:#fbfcfe; }
+    .field-area.short { min-height:90px; }
+    .field-area.tall { min-height:260px; }
+    .image-strip, .tag-strip, .thread-list { display:grid; gap:12px; }
+    .image-strip { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .image-card { min-height:120px; display:flex; align-items:center; justify-content:center; border:1px dashed #b9c7dd; border-radius:18px; background:#f7f9fd; }
+    .tag-strip { grid-template-columns:repeat(auto-fit,minmax(120px,max-content)); }
+    .tag-pill { display:inline-flex; align-items:center; justify-content:center; padding:8px 12px; border-radius:999px; background:#eef4ff; color:#315aa8; }
+    .counter { color:#65748a; }
+    .settings-page { width:min(1080px, calc(100% - 48px)); margin:40px auto 80px; }
+    .hidden { display:none; }
+    h1, h2, h3, h4, p { margin-top:0; }
+  </style>
+</head>
+<body>
+  <div class="topnav">
+    <strong>Content Factory Agent</strong>
+    <div class="nav-actions">
+      <button class="nav-btn active" onclick="showScreen('home', this)">首页</button>
+      <button class="nav-btn" onclick="showScreen('workspace', this)">工作台</button>
+      <button class="nav-btn" onclick="showScreen('settings', this)">设置</button>
+    </div>
+  </div>
+
+  <section id="home" class="screen">
+    <section class="hero-composer">
+      <p class="eyebrow">Content Factory</p>
+      <h1>内容工厂创作 Agent</h1>
+      <p class="lead">一次输入，先生成母稿，再展开为多平台内容初稿。</p>
+      <textarea class="request-box">围绕 AI 出海工具生成一套内容，目标受众是独立开发者和内容创业者，强调趋势判断和机会分析。</textarea>
+      <div class="chip-row">
+        <button class="chip active">公众号文章</button>
+        <button class="chip active">小红书笔记</button>
+        <button class="chip active">Twitter</button>
+        <button class="chip active">视频脚本</button>
+      </div>
+      <button class="primary-button" onclick="showScreen('workspace')">生成内容</button>
+    </section>
+  </section>
+
+  <section id="workspace" class="screen hidden">
+    <div class="workspace-layout">
+      <aside class="history-sidebar">
+        <h2>历史记录</h2>
+        <div class="history-list">
+          <button class="history-card active">
+            <strong>AI 出海工具内容包</strong>
+            <span>2026-04-02 10:20</span>
+            <span>母稿 + 4 平台</span>
+          </button>
+          <button class="history-card">
+            <strong>网文出海选题内容包</strong>
+            <span>2026-04-01 18:42</span>
+            <span>母稿 + 3 平台</span>
+          </button>
+          <button class="history-card">
+            <strong>AI 工具增长内容包</strong>
+            <span>2026-03-31 22:03</span>
+            <span>母稿 + 2 平台</span>
+          </button>
+        </div>
+      </aside>
+      <main class="workspace-main">
+        <div class="workspace-toolbar">
+          <div class="tab-row">
+            <button class="tab-button active" onclick="showTab('master', this)">总策划/母稿</button>
+            <button class="tab-button" onclick="showTab('wechat', this)">公众号</button>
+            <button class="tab-button" onclick="showTab('xhs', this)">小红书</button>
+            <button class="tab-button" onclick="showTab('twitter', this)">Twitter</button>
+            <button class="tab-button" onclick="showTab('video', this)">视频脚本</button>
+          </div>
+          <div class="action-row" id="workspace-actions">
+            <button class="action-btn">编辑</button>
+            <button class="action-btn">复制</button>
+            <button class="action-btn" id="publish-btn">发布</button>
+          </div>
+        </div>
+
+        <section id="tab-master" class="editor-surface tab-panel">
+          <h3>AI 出海工具进入结构化增长阶段</h3>
+          <p>受众：独立开发者、内容创业者</p>
+          <p>目标：输出跨平台内容包，建立专业认知和增长引导</p>
+          <p>核心观点：AI 出海工具赛道正在从工具罗列转向结构化增长与差异化定位。</p>
+          <h4>结构大纲</h4>
+          <ul>
+            <li>市场变化与机会</li>
+            <li>为什么现在值得做</li>
+            <li>用户最关心的问题</li>
+            <li>不同平台的表达重点</li>
+          </ul>
+          <h4>平台拆分建议</h4>
+          <ul>
+            <li>公众号强调趋势和框架</li>
+            <li>小红书强调钩子和可感知收益</li>
+            <li>Twitter 同时生成单条与 Thread</li>
+            <li>视频脚本强调节奏与开场 hook</li>
+          </ul>
+        </section>
+
+        <section id="tab-wechat" class="editor-surface tab-panel hidden">
+          <input class="field-input" value="AI 出海工具，为什么现在是内容创业者的窗口期？" readonly />
+          <textarea class="field-area short" readonly>从趋势、供给和用户需求三层拆解 AI 出海工具内容机会。</textarea>
+          <textarea class="field-area tall" readonly>这是一篇用于原型展示的公众号正文示例。</textarea>
+          <textarea class="field-area short" readonly>如果你想继续看这一赛道的选题拆解，欢迎留言。</textarea>
+        </section>
+
+        <section id="tab-xhs" class="editor-surface tab-panel hidden">
+          <div class="image-strip">
+            <div class="image-card">封面 1</div>
+            <div class="image-card">封面 2</div>
+            <div class="image-card">封面 3</div>
+          </div>
+          <textarea class="field-area short" readonly>AI 出海工具，真的到窗口期了</textarea>
+          <textarea class="field-area tall" readonly>适合原型演示的小红书正文示例。</textarea>
+          <div class="tag-strip">
+            <span class="tag-pill">AI 出海</span>
+            <span class="tag-pill">独立开发</span>
+            <span class="tag-pill">内容创业</span>
+          </div>
+          <textarea class="field-area short" readonly>你会先做工具测评，还是先做趋势解读？</textarea>
+        </section>
+
+        <section id="tab-twitter" class="editor-surface tab-panel hidden">
+          <div class="tab-row">
+            <button class="tab-button active" onclick="showTwitter('single', this)">单条推文</button>
+            <button class="tab-button" onclick="showTwitter('thread', this)">Thread</button>
+          </div>
+          <div id="twitter-single">
+            <p class="counter">70/280</p>
+            <textarea class="field-area short" readonly>AI 出海工具正在从“新鲜感赛道”转向“结构化增长赛道”。机会不只在工具本身，更在内容分发与定位。</textarea>
+          </div>
+          <div id="twitter-thread" class="hidden">
+            <div class="thread-list">
+              <textarea class="field-area short" readonly>1/ AI 出海工具这个话题，为什么现在又值得重做一遍？</textarea>
+              <textarea class="field-area short" readonly>2/ 因为市场关注点已经变了：从工具炫技，转向增长效率。</textarea>
+              <textarea class="field-area short" readonly>3/ 用户真正想看的，不只是工具清单，而是怎么选、怎么用、怎么做差异化。</textarea>
+              <textarea class="field-area short" readonly>4/ 所以内容机会，正在从测评转向框架和判断。</textarea>
+              <textarea class="field-area short" readonly>5/ 这也是为什么现在是重新入场的时间点。</textarea>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-video" class="editor-surface tab-panel hidden">
+          <input class="field-input" value="AI 出海工具内容脚本" readonly />
+          <textarea class="field-area short" readonly>很多人以为 AI 出海工具已经卷完了，其实真正的窗口期才刚开始。</textarea>
+          <div class="thread-list">
+            <textarea class="field-area short" readonly>第一部分：赛道变化</textarea>
+            <textarea class="field-area short" readonly>第二部分：用户需求</textarea>
+            <textarea class="field-area short" readonly>第三部分：内容机会</textarea>
+          </div>
+          <textarea class="field-area short" readonly>如果你想继续看这个方向的系列拆解，记得关注。</textarea>
+        </section>
+      </main>
+    </div>
+  </section>
+
+  <section id="settings" class="screen hidden">
+    <main class="settings-page">
+      <h1>平台提示词设置</h1>
+      <section class="editor-surface">
+        <h3>wechat</h3>
+        <textarea class="field-area tall">输出适合公众号的深度长文，结构清晰，逻辑完整。</textarea>
+      </section>
+      <section class="editor-surface">
+        <h3>xiaohongshu</h3>
+        <textarea class="field-area tall">输出适合小红书的上图下文笔记，语言简洁有力，强调钩子和互动。</textarea>
+      </section>
+      <section class="editor-surface">
+        <h3>twitter</h3>
+        <textarea class="field-area tall">输出适合 Twitter 的单条推文与 thread，强调简洁与节奏。</textarea>
+      </section>
+      <section class="editor-surface">
+        <h3>videoScript</h3>
+        <textarea class="field-area tall">输出适合视频脚本的结构化文本，强调开场 hook、节奏和结尾引导。</textarea>
+      </section>
+      <div class="action-row">
+        <button class="action-btn">重置</button>
+        <button class="action-btn">保存</button>
+      </div>
+    </main>
+  </section>
+
+  <script>
+    function showScreen(id, button) {
+      document.querySelectorAll('.screen').forEach(el => el.classList.add('hidden'));
+      document.getElementById(id).classList.remove('hidden');
+      document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+      if (button) button.classList.add('active');
+    }
+    function showTab(id, button) {
+      document.querySelectorAll('.tab-panel').forEach(el => el.classList.add('hidden'));
+      document.getElementById('tab-' + id).classList.remove('hidden');
+      document.querySelectorAll('#workspace .tab-button').forEach(el => el.classList.remove('active'));
+      button.classList.add('active');
+      document.getElementById('publish-btn').style.display = (id === 'wechat' || id === 'xhs' || id === 'twitter') ? 'inline-flex' : 'none';
+    }
+    function showTwitter(mode, button) {
+      document.getElementById('twitter-single').classList.toggle('hidden', mode !== 'single');
+      document.getElementById('twitter-thread').classList.toggle('hidden', mode !== 'thread');
+      button.parentElement.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+      button.classList.add('active');
+    }
+  </script>
+</body>
+</html>
