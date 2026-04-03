@@ -3,3 +3,7 @@
 node_modules
 out
 dist
+.env.local
+**/.env.local
+dev.out.log
+dev.err.log

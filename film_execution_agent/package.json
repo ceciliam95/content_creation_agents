@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "node ../node_modules/tsx/dist/cli.mjs --test tests/scene-generation.test.ts"
   },
   "dependencies": {
     "next": "15.2.4",

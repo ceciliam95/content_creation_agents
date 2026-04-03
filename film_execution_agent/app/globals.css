@@ -215,6 +215,42 @@ h1 {
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
+.prompt-tools {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.system-prompt-wrap {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.system-prompt-label {
+  color: var(--text-soft);
+  font-size: 0.92rem;
+}
+
+.system-prompt-input {
+  width: 100%;
+  min-height: 120px;
+  padding: 18px;
+  border: 1px solid rgba(145, 120, 123, 0.14);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 253, 252, 0.92) 0%, rgba(248, 241, 240, 0.92) 100%);
+  color: var(--text);
+  resize: vertical;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+
+.system-prompt-input:focus {
+  outline: none;
+  border-color: rgba(197, 143, 152, 0.45);
+  box-shadow: 0 0 0 4px rgba(197, 143, 152, 0.08);
+}
+
 .script-input:focus {
   outline: none;
   border-color: rgba(197, 143, 152, 0.45);
@@ -286,6 +322,11 @@ h1 {
   border-color: rgba(197, 143, 152, 0.3);
   background: rgba(245, 233, 235, 0.92);
   transform: translateY(-1px);
+}
+
+.secondary-button.active {
+  border-color: rgba(197, 143, 152, 0.28);
+  background: rgba(244, 229, 232, 0.94);
 }
 
 .secondary-button:disabled {
@@ -394,6 +435,13 @@ h1 {
   display: flex;
   flex-direction: column;
   justify-content: center;
+}
+
+.error-state {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: #8d4f57;
 }
 
 .empty-kicker {
