@@ -1,0 +1,16 @@
+
+> film-execution-agent@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.2.4
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.31.99:3000
+
+ ✓ Starting...
+ ✓ Ready in 2.1s
+ ○ Compiling / ...
+ ✓ Compiled / in 14.9s (661 modules)
+ GET / 200 in 159ms
+ GET / 200 in 187ms
+ ✓ Compiled in 1220ms (647 modules)
+ GET / 200 in 497ms
