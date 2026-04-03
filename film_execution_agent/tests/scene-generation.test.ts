@@ -5,6 +5,7 @@ import {
   buildSceneGenerationPayload,
   extractSceneText,
 } from "../lib/scene-generation";
+import { getDefaultSystemPrompt } from "../lib/default-prompts";
 import { getTaskProviderConfig } from "../lib/task-provider-config";
 
 test("buildSceneGenerationPayload includes a system message when provided", () => {
@@ -88,4 +89,11 @@ test("getTaskProviderConfig throws when a task api key is missing", () => {
       }),
     /Missing SCRIPT_TO_SCENES_API_KEY/,
   );
+});
+
+test("getDefaultSystemPrompt returns the script_to_scenes prompt", () => {
+  const prompt = getDefaultSystemPrompt("script_to_scenes");
+
+  assert.match(prompt, /把输入剧本变成分镜表/);
+  assert.match(prompt, /台词必须保持和剧本一致/);
 });
