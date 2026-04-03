@@ -5,7 +5,6 @@ import { HomeComposer } from "@/components/home-composer";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { createGeneratedSessionState } from "@/lib/content-factory-state";
 import { getMockSessions } from "@/lib/mock-data";
-import { promptDefaults } from "@/lib/prompt-defaults";
 import type { PlatformKey, SessionRecord } from "@/lib/types";
 
 export function ContentFactoryApp() {
@@ -50,8 +49,7 @@ export function ContentFactoryApp() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          request,
-          wechatPrompt: promptDefaults.wechat
+          request
         })
       });
       const payload = (await response.json()) as { error?: string; session?: SessionRecord };

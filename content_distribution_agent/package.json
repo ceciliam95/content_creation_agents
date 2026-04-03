@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "tsx --test tests/mock-data.test.ts tests/workspace-state.test.ts tests/workspace-config.test.ts tests/settings-defaults.test.ts tests/ai-config.test.ts tests/wechat-generation.test.ts tests/generate-wechat-route.test.ts tests/content-factory-state.test.ts"
+    "test": "tsx --test tests/mock-data.test.ts tests/workspace-state.test.ts tests/workspace-config.test.ts tests/settings-defaults.test.ts tests/ai-config.test.ts tests/wechat-generation.test.ts tests/generate-wechat-route.test.ts tests/content-factory-state.test.ts tests/prompt-config.test.ts tests/prompt-settings-route.test.ts tests/prompt-settings-state.test.ts"
   },
   "dependencies": {
     "next": "15.2.4",

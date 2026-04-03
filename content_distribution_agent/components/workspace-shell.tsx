@@ -43,9 +43,17 @@ export function WorkspaceShell({
             ))}
           </div>
           <div className="action-row">
-            <button type="button">编辑</button>
-            <button type="button">复制</button>
-            {shouldShowPublishAction(activeTab) ? <button type="button">发布</button> : null}
+            <button type="button" className="action-button">
+              编辑
+            </button>
+            <button type="button" className="action-button">
+              复制
+            </button>
+            {shouldShowPublishAction(activeTab) ? (
+              <button type="button" className="action-button primary-action">
+                发布
+              </button>
+            ) : null}
           </div>
         </div>
         {activeTab === "总策划/母稿" ? <MasterTab draft={activeSession.masterDraft} /> : null}

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mint Layout Options</title>
+  <style>
+    :root {
+      --bg: #f3f7f5;
+      --panel: #fbfcfb;
+      --line: #d7e3de;
+      --line-strong: #c6d8d1;
+      --text: #16342b;
+      --muted: #5d786f;
+      --mint: #bfe8d8;
+      --mint-strong: #84cfb2;
+      --mint-deep: #3d8b72;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(191, 232, 216, 0.5), transparent 28%),
+        linear-gradient(180deg, #f6faf8 0%, #eef4f1 100%);
+      color: var(--text);
+    }
+
+    .page {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 32px 28px 48px;
+    }
+
+    .header {
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      font-size: 12px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px;
+    }
+
+    .option {
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: rgba(255,255,255,0.85);
+      box-shadow: 0 18px 42px rgba(58, 88, 76, 0.08);
+      overflow: hidden;
+    }
+
+    .option-head {
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(191,232,216,0.26), rgba(255,255,255,0.85));
+    }
+
+    .option-head h2 {
+      margin: 0 0 6px;
+      font-size: 20px;
+    }
+
+    .option-head p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      min-height: 620px;
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-right: 1px solid var(--line);
+      background: linear-gradient(180deg, #f7fbf9 0%, #f1f7f4 100%);
+      padding: 20px;
+    }
+
+    .history h3 {
+      margin: 0 0 14px;
+      font-size: 18px;
+    }
+
+    .history-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+      background: #fbfdfc;
+      display: grid;
+      gap: 6px;
+    }
+
+    .card.active {
+      border-color: var(--mint-strong);
+      background: linear-gradient(180deg, rgba(191,232,216,0.36), rgba(255,255,255,0.98));
+      box-shadow: inset 0 0 0 1px rgba(132, 207, 178, 0.45);
+    }
+
+    .footer-wrap {
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
+
+    .footer-wrap.tight {
+      padding-top: 16px;
+      margin: 0 -4px;
+    }
+
+    .settings-btn {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--line-strong);
+      background: #f8fbfa;
+      color: var(--text);
+      text-align: center;
+      font-weight: 600;
+    }
+
+    .settings-btn.mint {
+      border-color: rgba(132, 207, 178, 0.75);
+      background: linear-gradient(180deg, #effaf5 0%, #e3f5ed 100%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+    }
+
+    .main {
+      padding: 22px;
+      background: #f7faf8;
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .tabs, .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pill {
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .pill.active {
+      background: linear-gradient(180deg, #daf3e8 0%, #bfe8d8 100%);
+      border-color: rgba(132, 207, 178, 0.95);
+      color: #215a49;
+    }
+
+    .surface {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: #fcfefd;
+      min-height: 430px;
+      padding: 22px;
+    }
+
+    .field {
+      height: 52px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fbfdfc;
+      margin-bottom: 14px;
+    }
+
+    .field.large {
+      height: 220px;
+    }
+
+    .notes {
+      display: grid;
+      gap: 10px;
+      padding: 18px 22px 24px;
+      border-top: 1px solid var(--line);
+      background: rgba(250,252,251,0.92);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .swatch {
+      display: inline-flex;
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      margin-right: 8px;
+      vertical-align: middle;
+      border: 1px solid rgba(0,0,0,0.04);
+    }
+
+    @media (max-width: 1080px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <p class="eyebrow">Visual Compare</p>
+      <h1>薄荷绿 + 浅灰 UI 方向对比</h1>
+      <p class="subtitle">重点看两件事：整体气质，以及左下角设置按钮和分割线的对齐方式。</p>
+    </div>
+
+    <div class="grid">
+      <section class="option">
+        <div class="option-head">
+          <h2>A. 轻薄荷玻璃感</h2>
+          <p><span class="swatch" style="background:#bfe8d8"></span>更柔和，页面通透，但侧栏底部仍然偏“漂浮”。</p>
+        </div>
+        <div class="workspace">
+          <aside class="sidebar">
+            <div class="history">
+              <h3>历史记录</h3>
+              <div class="history-list">
+                <div class="card active">
+                  <strong>AI 出海工具内容包</strong>
+                  <span>2026-04-03 11:20</span>
+                </div>
+                <div class="card">
+                  <strong>网文出海内容包</strong>
+                  <span>2026-04-02 18:42</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="footer-wrap">
+              <div class="settings-btn">设置</div>
+            </div>
+          </aside>
+
+          <main class="main">
+            <div class="toolbar">
+              <div class="tabs">
+                <div class="pill active">总策划/母稿</div>
+                <div class="pill">公众号</div>
+                <div class="pill">小红书</div>
+              </div>
+              <div class="actions">
+                <div class="pill">编辑</div>
+                <div class="pill">复制</div>
+                <div class="pill">发布</div>
+              </div>
+            </div>
+
+            <div class="surface">
+              <div class="field"></div>
+              <div class="field"></div>
+              <div class="field large"></div>
+            </div>
+          </main>
+        </div>
+        <div class="notes">
+          <div>优点：更柔和、更轻盈，薄荷绿很自然。</div>
+          <div>缺点：左下角按钮与分割线之间还有一点“悬空感”，不够严谨。</div>
+        </div>
+      </section>
+
+      <section class="option">
+        <div class="option-head">
+          <h2>B. 薄荷灰后台感</h2>
+          <p><span class="swatch" style="background:#84cfb2"></span>我推荐这一版，边框更齐，设置区与底部分割更稳。</p>
+        </div>
+        <div class="workspace">
+          <aside class="sidebar">
+            <div class="history">
+              <h3>历史记录</h3>
+              <div class="history-list">
+                <div class="card active">
+                  <strong>AI 出海工具内容包</strong>
+                  <span>2026-04-03 11:20</span>
+                </div>
+                <div class="card">
+                  <strong>网文出海内容包</strong>
+                  <span>2026-04-02 18:42</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="footer-wrap tight">
+              <div class="settings-btn mint">设置</div>
+            </div>
+          </aside>
+
+          <main class="main">
+            <div class="toolbar">
+              <div class="tabs">
+                <div class="pill active">总策划/母稿</div>
+                <div class="pill">公众号</div>
+                <div class="pill">小红书</div>
+              </div>
+              <div class="actions">
+                <div class="pill">编辑</div>
+                <div class="pill">复制</div>
+                <div class="pill">发布</div>
+              </div>
+            </div>
+
+            <div class="surface">
+              <div class="field"></div>
+              <div class="field"></div>
+              <div class="field large"></div>
+            </div>
+          </main>
+        </div>
+        <div class="notes">
+          <div>优点：更像正式运营后台，薄荷绿只落在关键高亮处，不会太花。</div>
+          <div>优点：左下角分割线、按钮宽度、外边距都更统一，截图里那个不齐的问题会明显改善。</div>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

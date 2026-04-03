@@ -30,36 +30,53 @@ export function HomeComposer({
 }: Props) {
   return (
     <section className="hero-composer">
-      <p className="eyebrow">Content Factory</p>
-      <h1>内容工厂创作 Agent</h1>
-      <p className="lead">一次输入，先生成母稿，再展开为多平台内容初稿。</p>
-      <textarea
-        className="request-box"
-        value={request}
-        onChange={(event) => onRequestChange(event.target.value)}
-        placeholder="输入创作需求、受众、目标和内容方向"
-      />
-      <div className="chip-row">
-        {platforms.map((platform) => (
+      <div className="hero-shell">
+        <p className="eyebrow">Content Factory</p>
+        <h1>内容工厂创作 Agent</h1>
+        <p className="lead">一次输入，先生成母稿，再延展成多平台内容初稿。</p>
+
+        <label className="hero-label" htmlFor="request-box">
+          创作需求
+        </label>
+        <textarea
+          id="request-box"
+          className="request-box"
+          value={request}
+          onChange={(event) => onRequestChange(event.target.value)}
+          placeholder="输入创作主题、目标受众、内容角度和希望达成的效果"
+        />
+
+        <div className="hero-meta">
+          <div>
+            <p className="hero-label">生成平台</p>
+            <div className="chip-row">
+              {platforms.map((platform) => (
+                <button
+                  key={platform.key}
+                  type="button"
+                  className={selectedPlatforms.includes(platform.key) ? "chip active" : "chip"}
+                  onClick={() => onTogglePlatform(platform.key)}
+                >
+                  {platform.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {error ? <p className="notice error">{error}</p> : null}
+
+        <div className="hero-actions">
           <button
-            key={platform.key}
             type="button"
-            className={selectedPlatforms.includes(platform.key) ? "chip active" : "chip"}
-            onClick={() => onTogglePlatform(platform.key)}
+            className="primary-button"
+            onClick={onGenerate}
+            disabled={isGenerating}
           >
-            {platform.label}
+            {isGenerating ? "生成中..." : "生成内容"}
           </button>
-        ))}
+        </div>
       </div>
-      {error ? <p className="notice error">{error}</p> : null}
-      <button
-        type="button"
-        className="primary-button"
-        onClick={onGenerate}
-        disabled={isGenerating}
-      >
-        {isGenerating ? "生成中..." : "生成内容"}
-      </button>
     </section>
   );
 }

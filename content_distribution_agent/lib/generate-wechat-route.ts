@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { loadAiConfig } from "@/lib/ai-config";
+import { createPromptConfigStore } from "@/lib/prompt-config-store";
+import type { PromptConfig } from "@/lib/prompt-defaults";
 import {
   buildSessionFromGeneration,
   buildWechatPrompt,
@@ -10,31 +12,35 @@ import {
 type RouteDependencies = {
   generateWechatBundle: (input: {
     request: string;
-    wechatPrompt: string;
   }) => Promise<GeneratedWechatBundle>;
+};
+
+type GenerateWechatBundleDeps = {
+  request: string;
+  fetchImpl?: typeof fetch;
+  loadConfig?: typeof loadAiConfig;
+  loadPromptConfig?: () => Promise<PromptConfig>;
 };
 
 export function createGenerateWechatHandler(deps: RouteDependencies) {
   return async function handleGenerateWechat(request: Request) {
-    let body: { request?: string; wechatPrompt?: string } | null = null;
+    let body: { request?: string } | null = null;
 
     try {
-      body = (await request.json()) as { request?: string; wechatPrompt?: string };
+      body = (await request.json()) as { request?: string };
     } catch {
       return NextResponse.json({ error: "请求体不是合法的 JSON。" }, { status: 400 });
     }
 
     const userRequest = body?.request?.trim();
-    const wechatPrompt = body?.wechatPrompt?.trim();
 
-    if (!userRequest || !wechatPrompt) {
-      return NextResponse.json({ error: "缺少创作需求或公众号提示词。" }, { status: 400 });
+    if (!userRequest) {
+      return NextResponse.json({ error: "缺少创作需求。" }, { status: 400 });
     }
 
     try {
       const generation = await deps.generateWechatBundle({
-        request: userRequest,
-        wechatPrompt
+        request: userRequest
       });
       const session = buildSessionFromGeneration({
         request: userRequest,
@@ -51,15 +57,23 @@ export function createGenerateWechatHandler(deps: RouteDependencies) {
   };
 }
 
-export const generateWechatBundle = async ({
+export async function generateWechatBundleWithDeps({
   request,
-  wechatPrompt
-}: {
-  request: string;
-  wechatPrompt: string;
-}) => {
-  const config = loadAiConfig();
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+  fetchImpl = fetch,
+  loadConfig = loadAiConfig,
+  loadPromptConfig = () => createPromptConfigStore().readConfig()
+}: GenerateWechatBundleDeps) {
+  const config = loadConfig();
+  const promptConfig = await loadPromptConfig();
+  const activeTemplate = promptConfig.wechat.templates.find(
+    (item) => item.id === promptConfig.wechat.activeTemplateId
+  );
+
+  if (!activeTemplate) {
+    throw new Error("No active WeChat prompt template is configured.");
+  }
+
+  const response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
@@ -71,10 +85,13 @@ export const generateWechatBundle = async ({
       response_format: { type: "json_object" },
       messages: [
         {
+          role: "system",
+          content: activeTemplate.prompt
+        },
+        {
           role: "user",
           content: buildWechatPrompt({
-            request,
-            wechatPrompt
+            request
           })
         }
       ]
@@ -87,4 +104,7 @@ export const generateWechatBundle = async ({
 
   const payload = await response.json();
   return parseWechatGenerationResponse(payload);
-};
+}
+
+export const generateWechatBundle = async ({ request }: { request: string }) =>
+  generateWechatBundleWithDeps({ request });

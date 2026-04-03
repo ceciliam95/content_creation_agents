@@ -46,14 +46,11 @@ export function buildSessionFromGeneration({
 }
 
 export function buildWechatPrompt({
-  request,
-  wechatPrompt
+  request
 }: {
   request: string;
-  wechatPrompt: string;
 }) {
   return [
-    "你是一个中文内容工厂助手。",
     "请根据用户需求生成总策划/母稿与公众号文章。",
     "只返回 JSON，不要返回 markdown、代码块或额外解释。",
     "JSON 结构必须严格匹配：",
@@ -74,8 +71,7 @@ export function buildWechatPrompt({
         cta: "string"
       }
     }),
-    `用户需求：${request}`,
-    `公众号平台提示词：${wechatPrompt}`
+    `用户需求：${request}`
   ].join("\n");
 }
 
