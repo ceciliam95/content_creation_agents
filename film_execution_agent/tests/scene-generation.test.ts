@@ -15,6 +15,7 @@ import {
   buildAnalyzeAssetsPayload,
   extractAssetAnalysisFromResponse,
 } from "../lib/asset-analysis";
+import { createManualAsset } from "../lib/asset-factory";
 
 test("buildSceneGenerationPayload includes a system message when provided", () => {
   const payload = buildSceneGenerationPayload({
@@ -88,6 +89,20 @@ test("getTaskProviderConfig resolves script_to_scenes env vars", () => {
   });
 });
 
+test("getTaskProviderConfig resolves voice_tagging env vars", () => {
+  const config = getTaskProviderConfig("voice_tagging", {
+    VOICE_TAGGING_API_KEY: "voice-secret",
+    VOICE_TAGGING_MODEL: "deepseek-ai/DeepSeek-V3.2",
+    VOICE_TAGGING_BASE_URL: "https://api.siliconflow.cn/v1",
+  });
+
+  assert.deepEqual(config, {
+    apiKey: "voice-secret",
+    model: "deepseek-ai/DeepSeek-V3.2",
+    baseUrl: "https://api.siliconflow.cn/v1",
+  });
+});
+
 test("getTaskProviderConfig throws when a task api key is missing", () => {
   assert.throws(
     () =>
@@ -104,6 +119,13 @@ test("getDefaultSystemPrompt returns the script_to_scenes prompt", () => {
 
   assert.match(prompt, /分镜表/);
   assert.match(prompt, /台词必须保持和剧本一致/);
+});
+
+test("getDefaultSystemPrompt returns the voice_tagging prompt", () => {
+  const prompt = getDefaultSystemPrompt("voice_tagging");
+
+  assert.match(prompt, /voice tagging/i);
+  assert.match(prompt, /every sentence/i);
 });
 
 test("listTaskStyleOptions returns styles for character_image", () => {
@@ -164,4 +186,30 @@ test("extractAssetAnalysisFromResponse parses JSON text returned by the model", 
   assert.equal(output.dialogues[0].character, "Eleanor");
   assert.equal(output.scenes[0].name, "Study");
   assert.equal(output.items[0].status, "reuse");
+});
+
+test("createManualAsset creates a blank dialogue asset", () => {
+  const asset = createManualAsset("dialogue", 3);
+
+  assert.deepEqual(asset, {
+    kind: "dialogue",
+    asset: {
+      id: "dialogue-manual-3",
+      character: "VO",
+      text: "",
+      status: "ready",
+    },
+    title: "VO",
+    subtitle: "Dialogue",
+    status: "ready",
+  });
+});
+
+test("createManualAsset creates a character asset with a starter name", () => {
+  const asset = createManualAsset("character", 2);
+
+  assert.equal(asset.kind, "character");
+  assert.equal(asset.asset.id, "character-manual-2");
+  assert.equal(asset.asset.name, "New Character 2");
+  assert.equal(asset.subtitle, "Character");
 });

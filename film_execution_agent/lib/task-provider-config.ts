@@ -1,4 +1,4 @@
-type SupportedTask = "script_to_scenes" | "analyze_assets";
+type SupportedTask = "script_to_scenes" | "analyze_assets" | "voice_tagging";
 
 type TaskProviderConfig = {
   apiKey: string;
@@ -21,6 +21,11 @@ const TASK_ENV_KEYS: Record<
     apiKey: "ANALYZE_ASSETS_API_KEY",
     model: "ANALYZE_ASSETS_MODEL",
     baseUrl: "ANALYZE_ASSETS_BASE_URL",
+  },
+  voice_tagging: {
+    apiKey: "VOICE_TAGGING_API_KEY",
+    model: "VOICE_TAGGING_MODEL",
+    baseUrl: "VOICE_TAGGING_BASE_URL",
   },
 };
 

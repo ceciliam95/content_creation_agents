@@ -1,6 +1,7 @@
 export type PromptTask =
   | "script_to_scenes"
   | "analyze_assets"
+  | "voice_tagging"
   | "asset_generation"
   | "video_generation";
 
@@ -70,6 +71,18 @@ const DEFAULT_SYSTEM_PROMPTS: Record<PromptTask, string> = {
 10. scenes 需要提取场景名和适合后续场景图生成的 detail
 11. items 需要提取关键道具或关键物件，并给出适合后续 item 图生成的 detail
 12. 只输出 JSON`,
+  voice_tagging: `You are a voice tagging assistant for text-to-speech preparation.
+
+Your task is to rewrite the provided dialogue by adding one short emotional or delivery tag before every sentence.
+
+Rules:
+1. Preserve the original sentence text exactly.
+2. Add one tag before every sentence using square brackets, for example: [thoughtful]
+3. Every sentence must start on a new line.
+4. Do not merge or remove sentences.
+5. Do not explain anything.
+6. Return only the tagged text.
+7. Tags should be short, natural, and performance-oriented, such as [thoughtful], [calm], [tense], [warm], [urgent], [hesitant].`,
   asset_generation: "",
   video_generation: "",
 };

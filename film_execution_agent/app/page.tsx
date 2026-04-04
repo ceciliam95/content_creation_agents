@@ -6,6 +6,10 @@ import {
   type DialogueAsset,
   type VisualAsset,
 } from "@/lib/asset-analysis";
+import {
+  createManualAsset,
+  type ManualAssetKind,
+} from "@/lib/asset-factory";
 import { getDefaultSystemPrompt } from "@/lib/default-prompts";
 import {
   getTaskStylePromptConfig,
@@ -82,6 +86,7 @@ export default function Page() {
   const [generationError, setGenerationError] = useState("");
   const [assetStoryboard, setAssetStoryboard] = useState(sampleStoryboardAssetInput);
   const [assetAnalysis, setAssetAnalysis] = useState<AssetAnalysisResult>(emptyAssetAnalysis);
+  const [manualAssets, setManualAssets] = useState<AssetListEntry[]>([]);
   const [hasAnalyzedAssets, setHasAnalyzedAssets] = useState(false);
   const [isAnalyzingAssets, setIsAnalyzingAssets] = useState(false);
   const [assetAnalysisError, setAssetAnalysisError] = useState("");
@@ -98,6 +103,13 @@ export default function Page() {
   const [reusedAssetKeys, setReusedAssetKeys] = useState<string[]>([]);
   const [assetPromptDrafts, setAssetPromptDrafts] = useState<Record<string, string>>({});
   const [dialogueDrafts, setDialogueDrafts] = useState<Record<string, string>>({});
+  const [dialogueOriginals, setDialogueOriginals] = useState<Record<string, string>>({});
+  const [showVoiceTaggingPrompt, setShowVoiceTaggingPrompt] = useState(false);
+  const [voiceTaggingSystemPrompt, setVoiceTaggingSystemPrompt] = useState(() =>
+    getDefaultSystemPrompt("voice_tagging"),
+  );
+  const [isVoiceTagging, setIsVoiceTagging] = useState(false);
+  const [voiceTaggingError, setVoiceTaggingError] = useState("");
 
   async function handleGenerate() {
     if (!script.trim() || isGenerating) {
@@ -207,9 +219,16 @@ export default function Page() {
 
       setAssetAnalysis(result);
       setHasAnalyzedAssets(true);
+      setManualAssets([]);
       setReusedAssetKeys([]);
       setAssetPromptDrafts({});
       setDialogueDrafts({});
+      setDialogueOriginals(
+        Object.fromEntries(
+          result.dialogues.map((asset) => [`dialogue:${asset.id}`, asset.text]),
+        ),
+      );
+      setVoiceTaggingError("");
 
       const firstDialogue = result.dialogues[0];
       const firstCharacter = result.characters[0];
@@ -349,15 +368,86 @@ export default function Page() {
 
   function resetAssetList() {
     setAssetAnalysis(emptyAssetAnalysis);
+    setManualAssets([]);
     setReusedAssetKeys([]);
     setAssetPromptDrafts({});
     setDialogueDrafts({});
+    setDialogueOriginals({});
     setSelectedAssetKey("");
     setHasAnalyzedAssets(false);
     setAssetAnalysisError("");
   }
 
-  const assetList: AssetListEntry[] = [
+  async function handleVoiceTagging(assetKey: string, text: string) {
+    if (!text.trim() || isVoiceTagging) {
+      return;
+    }
+
+    setIsVoiceTagging(true);
+    setVoiceTaggingError("");
+
+    try {
+      const response = await fetch("/api/voice-tagging", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text,
+          systemPrompt: voiceTaggingSystemPrompt,
+        }),
+      });
+
+      const data = (await response.json()) as {
+        taggedText?: string;
+        error?: string;
+      };
+
+      if (!response.ok || !data.taggedText) {
+        throw new Error(data.error ?? "Voice tagging failed.");
+      }
+
+      updateDialogueDraft(assetKey, data.taggedText);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Voice tagging failed.";
+
+      setVoiceTaggingError(message);
+    } finally {
+      setIsVoiceTagging(false);
+    }
+  }
+
+  function resetDialogueText(assetKey: string, fallbackText: string) {
+    const original = dialogueOriginals[assetKey] ?? fallbackText;
+    updateDialogueDraft(assetKey, original);
+    setVoiceTaggingError("");
+  }
+
+  function addManualAsset(kind: ManualAssetKind) {
+    const nextIndex =
+      manualAssets.filter((asset) => asset.kind === kind).length + 1;
+    const created = createManualAsset(kind, nextIndex);
+    const assetEntry: AssetListEntry = {
+      ...created,
+      id: created.asset.id,
+    };
+    const assetKey = `${assetEntry.kind}:${assetEntry.id}`;
+
+    setManualAssets((current) => [assetEntry, ...current]);
+    setSelectedAssetKey(assetKey);
+    setHasAnalyzedAssets(true);
+    setAssetAnalysisError("");
+
+    if (assetEntry.kind === "dialogue") {
+      setDialogueOriginals((current) => ({
+        ...current,
+        [assetKey]: assetEntry.asset.text,
+      }));
+    }
+  }
+
+  const analyzedAssetList: AssetListEntry[] = [
     ...assetAnalysis.dialogues.map((asset) => ({
       kind: "dialogue" as const,
       id: asset.id,
@@ -391,6 +481,8 @@ export default function Page() {
       asset,
     })),
   ];
+
+  const assetList: AssetListEntry[] = [...manualAssets, ...analyzedAssetList];
 
   const selectedAsset =
     assetList.find((asset) => `${asset.kind}:${asset.id}` === selectedAssetKey) ??
@@ -692,6 +784,44 @@ export default function Page() {
                 </div>
               </section>
 
+              <section className="panel asset-manual-entry-panel">
+                <div className="asset-list-header">
+                  <span className="panel-label">Manual Entry</span>
+                  <h3>Create assets without analysis</h3>
+                </div>
+
+                <div className="asset-create-row">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => addManualAsset("dialogue")}
+                  >
+                    + Dialogue
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => addManualAsset("character")}
+                  >
+                    + Character
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => addManualAsset("scene")}
+                  >
+                    + Scene
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => addManualAsset("item")}
+                  >
+                    + Item
+                  </button>
+                </div>
+              </section>
+
               {hasAnalyzedAssets ? (
                 <div className="asset-groups">
                   <section className="asset-workbench">
@@ -784,6 +914,50 @@ export default function Page() {
                               </select>
                             </div>
                           </div>
+
+                          <div className="workspace-secondary-actions">
+                            <button
+                              type="button"
+                              className={showVoiceTaggingPrompt ? "secondary-button active" : "secondary-button"}
+                              onClick={() => setShowVoiceTaggingPrompt((current) => !current)}
+                            >
+                              {showVoiceTaggingPrompt ? "Hide System Prompt" : "View System Prompt"}
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => handleVoiceTagging(effectiveAssetKey, dialogueText)}
+                              disabled={!dialogueText.trim() || isVoiceTagging}
+                            >
+                              {isVoiceTagging ? "Tagging..." : "Voice Tagging"}
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => resetDialogueText(effectiveAssetKey, selectedAsset.asset.text)}
+                            >
+                              Reset
+                            </button>
+                          </div>
+
+                          {showVoiceTaggingPrompt ? (
+                            <div className="system-prompt-wrap workspace-prompt-wrap">
+                              <label className="system-prompt-label" htmlFor="voice-tagging-system-prompt">
+                                Voice Tagging system prompt
+                              </label>
+                              <textarea
+                                id="voice-tagging-system-prompt"
+                                className="system-prompt-input"
+                                value={voiceTaggingSystemPrompt}
+                                onChange={(event) => setVoiceTaggingSystemPrompt(event.target.value)}
+                                placeholder="Edit the Voice Tagging system prompt"
+                              />
+                            </div>
+                          ) : null}
+
+                          {voiceTaggingError ? (
+                            <p className="asset-inline-error">{voiceTaggingError}</p>
+                          ) : null}
 
                           <textarea
                             className="dialogue-text-block workspace-text prompt-editor"

@@ -562,6 +562,11 @@ h1 {
   background: rgba(255, 252, 251, 0.76);
 }
 
+.asset-manual-entry-panel {
+  min-height: auto;
+  padding: 18px;
+}
+
 .asset-list-panel {
   display: flex;
   flex-direction: column;
@@ -575,6 +580,13 @@ h1 {
   max-height: 600px;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+.asset-create-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .asset-list-item {
@@ -745,6 +757,17 @@ h1 {
   flex-wrap: wrap;
   gap: 14px;
   margin-bottom: 18px;
+}
+
+.workspace-secondary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.workspace-prompt-wrap {
+  margin-bottom: 16px;
 }
 
 .asset-footer-actions {
