@@ -6,6 +6,10 @@ import {
   extractSceneText,
 } from "../lib/scene-generation";
 import { getDefaultSystemPrompt } from "../lib/default-prompts";
+import {
+  getTaskStylePromptConfig,
+  listTaskStyleOptions,
+} from "../lib/task-style-registry";
 import { getTaskProviderConfig } from "../lib/task-provider-config";
 
 test("buildSceneGenerationPayload includes a system message when provided", () => {
@@ -96,4 +100,22 @@ test("getDefaultSystemPrompt returns the script_to_scenes prompt", () => {
 
   assert.match(prompt, /把输入剧本变成分镜表/);
   assert.match(prompt, /台词必须保持和剧本一致/);
+});
+
+test("listTaskStyleOptions returns styles for character_image", () => {
+  const styles = listTaskStyleOptions("character_image");
+
+  assert.ok(styles.length >= 3);
+  assert.deepEqual(styles[0], {
+    value: "2d_animation",
+    label: "2D Animation",
+  });
+});
+
+test("getTaskStylePromptConfig returns dialogue_tts style metadata", () => {
+  const config = getTaskStylePromptConfig("dialogue_tts", "natural_drama");
+
+  assert.equal(config.label, "Natural Drama");
+  assert.match(config.systemPrompt, /voice performance/i);
+  assert.match(config.userPromptTemplate, /dialogue text/i);
 });

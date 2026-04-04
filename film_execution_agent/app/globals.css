@@ -34,7 +34,8 @@ body {
 }
 
 button,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -166,6 +167,17 @@ h1 {
   gap: 24px;
 }
 
+.asset-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.asset-analysis-shell,
+.asset-groups {
+  display: grid;
+  gap: 16px;
+}
+
 .panel {
   min-height: 540px;
   padding: 26px;
@@ -186,6 +198,12 @@ h1 {
   flex-direction: column;
 }
 
+.asset-summary-panel {
+  min-height: auto;
+  padding: 12px;
+  border-radius: 18px;
+}
+
 .panel-heading {
   display: flex;
   align-items: flex-start;
@@ -197,6 +215,18 @@ h1 {
 .placeholder-panel h2 {
   margin-bottom: 10px;
   font-size: 1.7rem;
+  font-weight: 500;
+}
+
+.asset-group h3 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 500;
+}
+
+.asset-list-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
   font-weight: 500;
 }
 
@@ -255,6 +285,10 @@ h1 {
   outline: none;
   border-color: rgba(197, 143, 152, 0.45);
   box-shadow: 0 0 0 4px rgba(197, 143, 152, 0.08);
+}
+
+.asset-storyboard-input {
+  min-height: 260px;
 }
 
 .input-footer {
@@ -466,6 +500,260 @@ h1 {
   color: var(--rose-deep);
 }
 
+.asset-summary-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summary-chip {
+  padding: 12px 16px;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 252, 251, 0.78);
+}
+
+.summary-chip span {
+  display: block;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.summary-chip strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.asset-group {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255, 252, 251, 0.76) 0%, rgba(249, 242, 241, 0.92) 100%);
+}
+
+.asset-workbench {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 18px;
+}
+
+.asset-list-panel,
+.asset-workspace-panel {
+  padding: 18px;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+  border-radius: 20px;
+  background: rgba(255, 252, 251, 0.76);
+}
+
+.asset-list-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 680px;
+}
+
+.asset-list-scroll {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  max-height: 600px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.asset-list-item {
+  text-align: left;
+  padding: 14px 14px 15px;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 252, 251, 0.88);
+  color: var(--text);
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.asset-list-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(197, 143, 152, 0.22);
+}
+
+.asset-list-item.selected {
+  border-color: rgba(197, 143, 152, 0.3);
+  background: rgba(244, 229, 232, 0.72);
+}
+
+.asset-list-item.reused {
+  color: #4e7a5d;
+  border-color: rgba(109, 152, 123, 0.24);
+  background: rgba(228, 241, 233, 0.84);
+}
+
+.asset-list-item.selected.reused {
+  border-color: rgba(109, 152, 123, 0.28);
+  background: rgba(219, 239, 226, 0.96);
+}
+
+.asset-list-item-top {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.asset-workspace-panel {
+  min-height: 680px;
+}
+
+.asset-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.asset-style-picker {
+  display: grid;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.asset-style-picker.compact {
+  min-width: 200px;
+}
+
+.asset-style-picker span {
+  color: var(--text-soft);
+  font-size: 0.88rem;
+}
+
+.asset-style-picker select {
+  padding: 12px 14px;
+  border: 1px solid rgba(145, 120, 123, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 252, 251, 0.92);
+  color: var(--text);
+}
+
+.dialogue-grid,
+.asset-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.dialogue-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.asset-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.dialogue-card,
+.asset-card {
+  padding: 16px;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 252, 251, 0.78);
+}
+
+.asset-card-topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+}
+
+.status-chip.ready {
+  background: rgba(214, 171, 179, 0.16);
+  color: var(--rose-deep);
+}
+
+.status-chip.reuse {
+  background: rgba(219, 227, 221, 0.42);
+  color: #53665f;
+}
+
+.dialogue-text-block {
+  margin: 0 0 16px;
+  padding: 12px;
+  min-height: 120px;
+  border-radius: 16px;
+  border: 1px solid rgba(145, 120, 123, 0.1);
+  background: rgba(250, 245, 244, 0.9);
+  white-space: pre-wrap;
+  line-height: 1.65;
+}
+
+.asset-card p {
+  margin-bottom: 16px;
+  color: var(--text-soft);
+  line-height: 1.7;
+}
+
+.asset-card-preview {
+  margin-bottom: 16px;
+}
+
+.preview-frame {
+  min-height: 112px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  border: 1px dashed rgba(145, 120, 123, 0.22);
+  background:
+    linear-gradient(180deg, rgba(247, 239, 238, 0.94) 0%, rgba(252, 247, 246, 0.94) 100%);
+  color: var(--text-soft);
+}
+
+.asset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.workspace-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.workspace-text {
+  min-height: 260px;
+}
+
+.prompt-editor {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  color: var(--text);
+  outline: none;
+  cursor: text;
+}
+
+.prompt-editor:focus {
+  border-color: rgba(197, 143, 152, 0.28);
+  box-shadow: 0 0 0 4px rgba(197, 143, 152, 0.08);
+}
+
+.workspace-preview-card {
+  margin-bottom: 18px;
+}
+
 .dot {
   width: 8px;
   height: 8px;
@@ -519,8 +807,11 @@ h1 {
 
   .header-block,
   .storyboard-layout,
+  .asset-summary-row,
+  .asset-workbench,
   .panel-heading,
-  .input-footer {
+  .input-footer,
+  .asset-group-header {
     grid-template-columns: 1fr;
     display: grid;
   }
@@ -546,5 +837,18 @@ h1 {
   .output-actions {
     margin-top: 4px;
     flex-wrap: wrap;
+  }
+
+  .asset-style-picker {
+    min-width: 0;
+  }
+
+  .asset-list-panel,
+  .asset-workspace-panel {
+    min-height: auto;
+  }
+
+  .asset-list-scroll {
+    max-height: none;
   }
 }

@@ -1,11 +1,73 @@
 "use client";
 
 import { useState } from "react";
+import {
+  analyzeStoryboardAssets,
+  type AssetAnalysisResult,
+  type DialogueAsset,
+  type VisualAsset,
+} from "@/lib/asset-analysis";
 import { getDefaultSystemPrompt } from "@/lib/default-prompts";
+import {
+  getTaskStylePromptConfig,
+  listTaskStyleOptions,
+  type RegistryTask,
+} from "@/lib/task-style-registry";
 
 const sampleScript = `5 a.m. The city is not fully awake yet. She stands outside a corner convenience store holding a hot coffee, watching the bus stop across the street. The wind lifts her hair as a bus slowly approaches in the distance.`;
+const sampleStoryboardAssetInput = `SCENE 1
+
+人物：Eleanor, Duke
+地点：Study（书房）
+
+1
+景别：Close-up
+构图：Eleanor面部居中，背景书架虚化
+运镜：轻推镜
+机位：平视
+光影：冷光
+画面内容：Eleanor缓慢抬头直视前方，双手在胸前交握后慢慢收紧，桌面上放着一封拆开的信和一只咖啡杯。
+台词（VO）："Eleanor Hackket is the daughter of an Earl."
+
+SCENE 2
+
+人物：Duke
+地点：Hallway（走廊）
+
+1
+景别：Medium Shot
+构图：Duke靠墙站立，画面右侧留白
+运镜：静止
+机位：平视
+光影：暖灰侧光
+画面内容：Duke低头看向手中的旧钥匙，走廊尽头有一盏昏黄台灯。
+台词（VO）："We do not have much time left."`;
 
 type TabKey = "scenes" | "video" | "assets";
+type AssetKind = "dialogue" | "character" | "scene" | "item";
+type AssetListEntry =
+  | { kind: "dialogue"; id: string; title: string; subtitle: string; status: "reuse" | "ready"; asset: DialogueAsset }
+  | { kind: "character" | "scene" | "item"; id: string; title: string; subtitle: string; status: "reuse" | "ready"; asset: VisualAsset };
+type VoiceRole = "Narrator" | "Lead Female" | "Lead Male" | "Young Female" | "Young Male";
+
+const emptyAssetAnalysis: AssetAnalysisResult = {
+  dialogues: [],
+  characters: [],
+  scenes: [],
+  items: [],
+};
+
+const dialogueStyleOptions = listTaskStyleOptions("dialogue_tts");
+const characterStyleOptions = listTaskStyleOptions("character_image");
+const sceneStyleOptions = listTaskStyleOptions("scene_image");
+const itemStyleOptions = listTaskStyleOptions("item_image");
+const voiceRoleOptions: VoiceRole[] = [
+  "Narrator",
+  "Lead Female",
+  "Lead Male",
+  "Young Female",
+  "Young Male",
+];
 
 export default function Page() {
   const [activeTab, setActiveTab] = useState<TabKey>("scenes");
@@ -19,6 +81,18 @@ export default function Page() {
     getDefaultSystemPrompt("script_to_scenes"),
   );
   const [generationError, setGenerationError] = useState("");
+  const [assetStoryboard, setAssetStoryboard] = useState(sampleStoryboardAssetInput);
+  const [assetAnalysis, setAssetAnalysis] = useState<AssetAnalysisResult>(emptyAssetAnalysis);
+  const [hasAnalyzedAssets, setHasAnalyzedAssets] = useState(false);
+  const [dialogueStyle, setDialogueStyle] = useState(dialogueStyleOptions[0]?.value ?? "natural_drama");
+  const [characterStyle, setCharacterStyle] = useState(characterStyleOptions[0]?.value ?? "2d_animation");
+  const [sceneStyle, setSceneStyle] = useState(sceneStyleOptions[0]?.value ?? "2d_animation");
+  const [itemStyle, setItemStyle] = useState(itemStyleOptions[0]?.value ?? "product_clean");
+  const [selectedAssetKey, setSelectedAssetKey] = useState("");
+  const [voiceRole, setVoiceRole] = useState<VoiceRole>("Narrator");
+  const [reusedAssetKeys, setReusedAssetKeys] = useState<string[]>([]);
+  const [assetPromptDrafts, setAssetPromptDrafts] = useState<Record<string, string>>({});
+  const [dialogueDrafts, setDialogueDrafts] = useState<Record<string, string>>({});
 
   async function handleGenerate() {
     if (!script.trim() || isGenerating) {
@@ -89,6 +163,152 @@ export default function Page() {
     link.download = "scene-text.txt";
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function handleAnalyzeAssets() {
+    const result = analyzeStoryboardAssets(assetStoryboard);
+    setAssetAnalysis(result);
+    setHasAnalyzedAssets(true);
+    setReusedAssetKeys([]);
+    const firstDialogue = result.dialogues[0];
+    const firstCharacter = result.characters[0];
+    const firstScene = result.scenes[0];
+    const firstItem = result.items[0];
+    const firstAssetKey = firstDialogue
+      ? `dialogue:${firstDialogue.id}`
+      : firstCharacter
+        ? `character:${firstCharacter.id}`
+        : firstScene
+          ? `scene:${firstScene.id}`
+          : firstItem
+            ? `item:${firstItem.id}`
+            : "";
+    setSelectedAssetKey(firstAssetKey);
+  }
+
+  async function handleCopyDialogue(asset: DialogueAsset) {
+    await navigator.clipboard.writeText(asset.text);
+  }
+
+  function handleDownloadText(filename: string, content: string) {
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function toggleReuse(assetKey: string) {
+    setReusedAssetKeys((current) =>
+      current.includes(assetKey)
+        ? current.filter((item) => item !== assetKey)
+        : [...current, assetKey],
+    );
+  }
+
+  function updateAssetPromptDraft(assetKey: string, value: string) {
+    setAssetPromptDrafts((current) => ({
+      ...current,
+      [assetKey]: value,
+    }));
+  }
+
+  function updateDialogueDraft(assetKey: string, value: string) {
+    setDialogueDrafts((current) => ({
+      ...current,
+      [assetKey]: value,
+    }));
+  }
+
+  const assetList: AssetListEntry[] = [
+    ...assetAnalysis.dialogues.map((asset) => ({
+      kind: "dialogue" as const,
+      id: asset.id,
+      title: asset.character,
+      subtitle: "Dialogue",
+      status: asset.status,
+      asset,
+    })),
+    ...assetAnalysis.characters.map((asset) => ({
+      kind: "character" as const,
+      id: asset.id,
+      title: asset.name,
+      subtitle: "Character",
+      status: asset.status,
+      asset,
+    })),
+    ...assetAnalysis.scenes.map((asset) => ({
+      kind: "scene" as const,
+      id: asset.id,
+      title: asset.name,
+      subtitle: "Scene",
+      status: asset.status,
+      asset,
+    })),
+    ...assetAnalysis.items.map((asset) => ({
+      kind: "item" as const,
+      id: asset.id,
+      title: asset.name,
+      subtitle: "Item",
+      status: asset.status,
+      asset,
+    })),
+  ];
+
+  const selectedAsset =
+    assetList.find((asset) => `${asset.kind}:${asset.id}` === selectedAssetKey) ??
+    assetList[0] ??
+    null;
+
+  const effectiveAssetKey = selectedAsset
+    ? `${selectedAsset.kind}:${selectedAsset.id}`
+    : "";
+
+  function getVisualWorkspaceConfig(kind: Exclude<AssetKind, "dialogue">) {
+    if (kind === "character") {
+      return {
+        task: "character_image" as RegistryTask,
+        style: characterStyle,
+        setStyle: setCharacterStyle,
+        styleOptions: characterStyleOptions,
+        taskOptions: [
+          { value: "turnaround_views", label: "Character Turnaround" },
+          { value: "identity_sheet", label: "Identity Sheet" },
+        ],
+        selectedTask: "turnaround_views",
+        generateLabel: "Asset Generation",
+      };
+    }
+
+    if (kind === "scene") {
+      return {
+        task: "scene_image" as RegistryTask,
+        style: sceneStyle,
+        setStyle: setSceneStyle,
+        styleOptions: sceneStyleOptions,
+        taskOptions: [
+          { value: "scene_frame", label: "Scene Frame" },
+          { value: "environment_sheet", label: "Environment Sheet" },
+        ],
+        selectedTask: "scene_frame",
+        generateLabel: "Asset Generation",
+      };
+    }
+
+    return {
+      task: "item_image" as RegistryTask,
+      style: itemStyle,
+      setStyle: setItemStyle,
+      styleOptions: itemStyleOptions,
+      taskOptions: [
+        { value: "prop_reference", label: "Prop Reference" },
+        { value: "hero_prop", label: "Hero Prop Shot" },
+      ],
+      selectedTask: "prop_reference",
+      generateLabel: "Asset Generation",
+    };
   }
 
   return (
@@ -255,18 +475,317 @@ export default function Page() {
             </section>
           </div>
         ) : activeTab === "assets" ? (
-          <section className="panel placeholder-panel">
-            <span className="panel-label">Coming next</span>
-            <h2>Asset generation</h2>
-            <p>
-              This area will later support generating visual assets, references, and production-ready materials from
-              selected scenes. For now, it remains a lightweight placeholder.
-            </p>
-            <div className="placeholder-note">
-              <span className="dot" />
-              Asset generation module placeholder
-            </div>
-          </section>
+          <div className="asset-layout">
+            <section className="panel asset-input-panel">
+              <div className="panel-copy">
+                <span className="panel-label">Input</span>
+                <h2>Paste storyboard</h2>
+                <p>
+                  Paste the storyboard text, analyze the asset list, then decide what should be reused and what should
+                  be generated.
+                </p>
+              </div>
+
+              <textarea
+                className="script-input asset-storyboard-input"
+                value={assetStoryboard}
+                onChange={(event) => setAssetStoryboard(event.target.value)}
+                placeholder="Paste your storyboard text here"
+              />
+
+              <div className="input-footer">
+                <p className="support-copy">
+                  The prototype will split the storyboard into dialogue, characters, scenes, and items.
+                </p>
+                <button type="button" className="generate-button" onClick={handleAnalyzeAssets}>
+                  Analyze Assets
+                </button>
+              </div>
+            </section>
+
+            <section className="asset-analysis-shell">
+              <section className="panel asset-summary-panel">
+                <div className="asset-summary-row">
+                  <div className="summary-chip">
+                    <span>Dialogues</span>
+                    <strong>{assetAnalysis.dialogues.length}</strong>
+                  </div>
+                  <div className="summary-chip">
+                    <span>Characters</span>
+                    <strong>{assetAnalysis.characters.length}</strong>
+                  </div>
+                  <div className="summary-chip">
+                    <span>Scenes</span>
+                    <strong>{assetAnalysis.scenes.length}</strong>
+                  </div>
+                  <div className="summary-chip">
+                    <span>Items</span>
+                    <strong>{assetAnalysis.items.length}</strong>
+                  </div>
+                </div>
+              </section>
+
+              {hasAnalyzedAssets ? (
+                <div className="asset-groups">
+                  <section className="asset-workbench">
+                    <aside className="asset-list-panel">
+                      <div className="asset-list-header">
+                        <span className="panel-label">Asset List</span>
+                        <h3>Scroll through extracted assets</h3>
+                      </div>
+
+                      <div className="asset-list-scroll">
+                        {assetList.map((asset) => {
+                          const assetKey = `${asset.kind}:${asset.id}`;
+                          const isSelected = selectedAssetKey === assetKey;
+                          const isReused = reusedAssetKeys.includes(assetKey);
+
+                          return (
+                            <button
+                              key={assetKey}
+                              type="button"
+                              className={
+                                isSelected
+                                  ? isReused
+                                    ? "asset-list-item selected reused"
+                                    : "asset-list-item selected"
+                                  : isReused
+                                    ? "asset-list-item reused"
+                                    : "asset-list-item"
+                              }
+                              onClick={() => setSelectedAssetKey(assetKey)}
+                            >
+                              <span className="asset-list-item-top">{asset.subtitle}</span>
+                              <strong>{asset.title}</strong>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </aside>
+
+                    <section className="asset-workspace-panel">
+                      {selectedAsset?.kind === "dialogue" ? (
+                        (() => {
+                          const dialogueText =
+                            dialogueDrafts[effectiveAssetKey] ?? selectedAsset.asset.text;
+
+                          return (
+                        <>
+                          <div className="asset-group-header">
+                            <div>
+                              <span className="panel-label">Dialogue Workspace</span>
+                              <h3>{selectedAsset.title}</h3>
+                            </div>
+                            <span
+                              className={
+                                reusedAssetKeys.includes(effectiveAssetKey)
+                                  ? "status-chip reuse"
+                                  : "status-chip ready"
+                              }
+                            >
+                              {reusedAssetKeys.includes(effectiveAssetKey)
+                                ? "Reused"
+                                : "Ready for TTS"}
+                            </span>
+                          </div>
+
+                          <div className="workspace-controls">
+                            <div className="asset-style-picker compact">
+                              <span>Voice style</span>
+                              <select
+                                value={dialogueStyle}
+                                onChange={(event) => setDialogueStyle(event.target.value)}
+                              >
+                                {dialogueStyleOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="asset-style-picker compact">
+                              <span>Voice role</span>
+                              <select
+                                value={voiceRole}
+                                onChange={(event) => setVoiceRole(event.target.value as VoiceRole)}
+                              >
+                                {voiceRoleOptions.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <textarea
+                            className="dialogue-text-block workspace-text prompt-editor"
+                            value={dialogueText}
+                            onChange={(event) =>
+                              updateDialogueDraft(effectiveAssetKey, event.target.value)
+                            }
+                          />
+
+                          <div className="asset-actions">
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() =>
+                                navigator.clipboard.writeText(dialogueText)
+                              }
+                            >
+                              Copy
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() =>
+                                handleDownloadText(
+                                  `${selectedAsset.asset.character}-dialogue.txt`,
+                                  dialogueText,
+                                )
+                              }
+                            >
+                              Download
+                            </button>
+                            <button type="button" className="secondary-button">
+                              TTS Generation
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => toggleReuse(effectiveAssetKey)}
+                            >
+                              {reusedAssetKeys.includes(effectiveAssetKey) ? "Undo Reuse" : "Reuse"}
+                            </button>
+                          </div>
+                        </>
+                          );
+                        })()
+                      ) : selectedAsset ? (
+                        (() => {
+                          const visualConfig = getVisualWorkspaceConfig(selectedAsset.kind);
+                          const styleConfig = getTaskStylePromptConfig(
+                            visualConfig.task,
+                            visualConfig.style,
+                          );
+                          const defaultPromptText = styleConfig.userPromptTemplate.replace(
+                            "{{input}}",
+                            `${selectedAsset.title}\n${selectedAsset.asset.detail}`,
+                          );
+                          const promptText =
+                            assetPromptDrafts[effectiveAssetKey] ?? defaultPromptText;
+
+                          return (
+                            <>
+                              <div className="asset-group-header">
+                                <div>
+                                  <span className="panel-label">Image Workspace</span>
+                                  <h3>{selectedAsset.title}</h3>
+                                </div>
+                                <span
+                                  className={
+                                    reusedAssetKeys.includes(effectiveAssetKey)
+                                      ? "status-chip reuse"
+                                      : "status-chip ready"
+                                  }
+                                >
+                                  {reusedAssetKeys.includes(effectiveAssetKey)
+                                    ? "Reused"
+                                    : "Ready to Generate"}
+                                </span>
+                              </div>
+
+                              <div className="workspace-controls">
+                                <div className="asset-style-picker compact">
+                                  <span>Generation task</span>
+                                  <select defaultValue={visualConfig.selectedTask}>
+                                    {visualConfig.taskOptions.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="asset-style-picker compact">
+                                  <span>Style</span>
+                                  <select
+                                    value={visualConfig.style}
+                                    onChange={(event) => visualConfig.setStyle(event.target.value)}
+                                  >
+                                    {visualConfig.styleOptions.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+
+                              <div className="workspace-preview-card">
+                                <span className="panel-label">Prompt preview</span>
+                                <textarea
+                                  className="dialogue-text-block workspace-text prompt-editor"
+                                  value={promptText}
+                                  onChange={(event) =>
+                                    updateAssetPromptDraft(
+                                      effectiveAssetKey,
+                                      event.target.value,
+                                    )
+                                  }
+                                />
+                              </div>
+
+                              <div className="asset-actions">
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => navigator.clipboard.writeText(promptText)}
+                                >
+                                  Copy
+                                </button>
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() =>
+                                    handleDownloadText(
+                                      `${selectedAsset.title}-prompt.txt`,
+                                      promptText,
+                                    )
+                                  }
+                                >
+                                  Download
+                                </button>
+                                <button type="button" className="secondary-button">
+                                  Asset Generation
+                                </button>
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => toggleReuse(effectiveAssetKey)}
+                                >
+                                  {reusedAssetKeys.includes(effectiveAssetKey) ? "Undo Reuse" : "Reuse"}
+                                </button>
+                              </div>
+                            </>
+                          );
+                        })()
+                      ) : null}
+                    </section>
+                  </section>
+                </div>
+              ) : (
+                <section className="panel placeholder-panel">
+                  <span className="panel-label">Ready to analyze</span>
+                  <h2>Storyboard-driven asset workspace</h2>
+                  <p>
+                    Analyze the pasted storyboard to populate grouped sections for dialogue, characters, scenes, and
+                    items. Each section is designed to separate reusable assets from new generations.
+                  </p>
+                </section>
+              )}
+            </section>
+          </div>
         ) : (
           <section className="panel placeholder-panel">
             <span className="panel-label">Coming next</span>
