@@ -1,4 +1,4 @@
-type SupportedTask = "script_to_scenes";
+type SupportedTask = "script_to_scenes" | "analyze_assets";
 
 type TaskProviderConfig = {
   apiKey: string;
@@ -16,6 +16,11 @@ const TASK_ENV_KEYS: Record<
     apiKey: "SCRIPT_TO_SCENES_API_KEY",
     model: "SCRIPT_TO_SCENES_MODEL",
     baseUrl: "SCRIPT_TO_SCENES_BASE_URL",
+  },
+  analyze_assets: {
+    apiKey: "ANALYZE_ASSETS_API_KEY",
+    model: "ANALYZE_ASSETS_MODEL",
+    baseUrl: "ANALYZE_ASSETS_BASE_URL",
   },
 };
 

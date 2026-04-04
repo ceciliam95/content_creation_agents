@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import {
-  analyzeStoryboardAssets,
   type AssetAnalysisResult,
   type DialogueAsset,
   type VisualAsset,
@@ -84,6 +83,12 @@ export default function Page() {
   const [assetStoryboard, setAssetStoryboard] = useState(sampleStoryboardAssetInput);
   const [assetAnalysis, setAssetAnalysis] = useState<AssetAnalysisResult>(emptyAssetAnalysis);
   const [hasAnalyzedAssets, setHasAnalyzedAssets] = useState(false);
+  const [isAnalyzingAssets, setIsAnalyzingAssets] = useState(false);
+  const [assetAnalysisError, setAssetAnalysisError] = useState("");
+  const [showAnalyzePrompt, setShowAnalyzePrompt] = useState(false);
+  const [analyzeSystemPrompt, setAnalyzeSystemPrompt] = useState(() =>
+    getDefaultSystemPrompt("analyze_assets"),
+  );
   const [dialogueStyle, setDialogueStyle] = useState(dialogueStyleOptions[0]?.value ?? "natural_drama");
   const [characterStyle, setCharacterStyle] = useState(characterStyleOptions[0]?.value ?? "2d_animation");
   const [sceneStyle, setSceneStyle] = useState(sceneStyleOptions[0]?.value ?? "2d_animation");
@@ -165,25 +170,69 @@ export default function Page() {
     URL.revokeObjectURL(url);
   }
 
-  function handleAnalyzeAssets() {
-    const result = analyzeStoryboardAssets(assetStoryboard);
-    setAssetAnalysis(result);
-    setHasAnalyzedAssets(true);
-    setReusedAssetKeys([]);
-    const firstDialogue = result.dialogues[0];
-    const firstCharacter = result.characters[0];
-    const firstScene = result.scenes[0];
-    const firstItem = result.items[0];
-    const firstAssetKey = firstDialogue
-      ? `dialogue:${firstDialogue.id}`
-      : firstCharacter
-        ? `character:${firstCharacter.id}`
-        : firstScene
-          ? `scene:${firstScene.id}`
-          : firstItem
-            ? `item:${firstItem.id}`
-            : "";
-    setSelectedAssetKey(firstAssetKey);
+  async function handleAnalyzeAssets() {
+    if (!assetStoryboard.trim() || isAnalyzingAssets) {
+      return;
+    }
+
+    setIsAnalyzingAssets(true);
+    setAssetAnalysisError("");
+
+    try {
+      const response = await fetch("/api/analyze-assets", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          storyboard: assetStoryboard,
+          systemPrompt: analyzeSystemPrompt,
+        }),
+      });
+
+      const data = (await response.json()) as AssetAnalysisResult & {
+        error?: string;
+      };
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error ?? "Asset analysis failed.");
+      }
+
+      const result: AssetAnalysisResult = {
+        dialogues: data.dialogues ?? [],
+        characters: data.characters ?? [],
+        scenes: data.scenes ?? [],
+        items: data.items ?? [],
+      };
+
+      setAssetAnalysis(result);
+      setHasAnalyzedAssets(true);
+      setReusedAssetKeys([]);
+      setAssetPromptDrafts({});
+      setDialogueDrafts({});
+
+      const firstDialogue = result.dialogues[0];
+      const firstCharacter = result.characters[0];
+      const firstScene = result.scenes[0];
+      const firstItem = result.items[0];
+      const firstAssetKey = firstDialogue
+        ? `dialogue:${firstDialogue.id}`
+        : firstCharacter
+          ? `character:${firstCharacter.id}`
+          : firstScene
+            ? `scene:${firstScene.id}`
+            : firstItem
+              ? `item:${firstItem.id}`
+              : "";
+      setSelectedAssetKey(firstAssetKey);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Asset analysis failed.";
+
+      setAssetAnalysisError(message);
+    } finally {
+      setIsAnalyzingAssets(false);
+    }
   }
 
   async function handleCopyDialogue(asset: DialogueAsset) {
@@ -220,6 +269,92 @@ export default function Page() {
       ...current,
       [assetKey]: value,
     }));
+  }
+
+  function removeAsset(assetToRemove: AssetListEntry) {
+    setAssetAnalysis((current) => {
+      const next: AssetAnalysisResult = {
+        dialogues:
+          assetToRemove.kind === "dialogue"
+            ? current.dialogues.filter((asset) => asset.id !== assetToRemove.id)
+            : current.dialogues,
+        characters:
+          assetToRemove.kind === "character"
+            ? current.characters.filter((asset) => asset.id !== assetToRemove.id)
+            : current.characters,
+        scenes:
+          assetToRemove.kind === "scene"
+            ? current.scenes.filter((asset) => asset.id !== assetToRemove.id)
+            : current.scenes,
+        items:
+          assetToRemove.kind === "item"
+            ? current.items.filter((asset) => asset.id !== assetToRemove.id)
+            : current.items,
+      };
+
+      const nextList: AssetListEntry[] = [
+        ...next.dialogues.map((asset) => ({
+          kind: "dialogue" as const,
+          id: asset.id,
+          title: asset.character,
+          subtitle: "Dialogue",
+          status: asset.status,
+          asset,
+        })),
+        ...next.characters.map((asset) => ({
+          kind: "character" as const,
+          id: asset.id,
+          title: asset.name,
+          subtitle: "Character",
+          status: asset.status,
+          asset,
+        })),
+        ...next.scenes.map((asset) => ({
+          kind: "scene" as const,
+          id: asset.id,
+          title: asset.name,
+          subtitle: "Scene",
+          status: asset.status,
+          asset,
+        })),
+        ...next.items.map((asset) => ({
+          kind: "item" as const,
+          id: asset.id,
+          title: asset.name,
+          subtitle: "Item",
+          status: asset.status,
+          asset,
+        })),
+      ];
+
+      const removedKey = `${assetToRemove.kind}:${assetToRemove.id}`;
+      const remainingSelected = nextList.find((asset) => `${asset.kind}:${asset.id}` !== removedKey);
+      setSelectedAssetKey(remainingSelected ? `${remainingSelected.kind}:${remainingSelected.id}` : "");
+      setReusedAssetKeys((currentKeys) => currentKeys.filter((key) => key !== removedKey));
+      setAssetPromptDrafts((currentDrafts) => {
+        const nextDrafts = { ...currentDrafts };
+        delete nextDrafts[removedKey];
+        return nextDrafts;
+      });
+      setDialogueDrafts((currentDrafts) => {
+        const nextDrafts = { ...currentDrafts };
+        delete nextDrafts[removedKey];
+        return nextDrafts;
+      });
+      setHasAnalyzedAssets(nextList.length > 0);
+
+      return next;
+    });
+  }
+
+  function resetAssetList() {
+    setAssetAnalysis(emptyAssetAnalysis);
+    setReusedAssetKeys([]);
+    setAssetPromptDrafts({});
+    setDialogueDrafts({});
+    setSelectedAssetKey("");
+    setHasAnalyzedAssets(false);
+    setAssetAnalysisError("");
   }
 
   const assetList: AssetListEntry[] = [
@@ -493,14 +628,46 @@ export default function Page() {
                 placeholder="Paste your storyboard text here"
               />
 
-              <div className="input-footer">
-                <p className="support-copy">
-                  The prototype will split the storyboard into dialogue, characters, scenes, and items.
-                </p>
-                <button type="button" className="generate-button" onClick={handleAnalyzeAssets}>
-                  Analyze Assets
+              <div className="prompt-tools">
+                <button
+                  type="button"
+                  className={showAnalyzePrompt ? "secondary-button active" : "secondary-button"}
+                  onClick={() => setShowAnalyzePrompt((current) => !current)}
+                >
+                  {showAnalyzePrompt ? "Hide System Prompt" : "View System Prompt"}
                 </button>
               </div>
+
+              {showAnalyzePrompt ? (
+                <div className="system-prompt-wrap">
+                  <label className="system-prompt-label" htmlFor="analyze-system-prompt">
+                    Analyze Assets system prompt
+                  </label>
+                  <textarea
+                    id="analyze-system-prompt"
+                    className="system-prompt-input"
+                    value={analyzeSystemPrompt}
+                    onChange={(event) => setAnalyzeSystemPrompt(event.target.value)}
+                    placeholder="Edit the Analyze Assets system prompt"
+                  />
+                </div>
+              ) : null}
+
+              <div className="input-footer">
+                <p className="support-copy">
+                  This uses a dedicated LLM call to extract dialogue, characters, scenes, and items.
+                </p>
+                <button
+                  type="button"
+                  className={isAnalyzingAssets ? "generate-button loading" : "generate-button"}
+                  onClick={handleAnalyzeAssets}
+                  disabled={!assetStoryboard.trim() || isAnalyzingAssets}
+                >
+                  {isAnalyzingAssets ? "Analyzing..." : "Analyze Assets"}
+                </button>
+              </div>
+
+              {assetAnalysisError ? <p className="asset-inline-error">{assetAnalysisError}</p> : null}
             </section>
 
             <section className="asset-analysis-shell">
@@ -658,6 +825,13 @@ export default function Page() {
                             >
                               {reusedAssetKeys.includes(effectiveAssetKey) ? "Undo Reuse" : "Reuse"}
                             </button>
+                            <button
+                              type="button"
+                              className="secondary-button danger-button"
+                              onClick={() => removeAsset(selectedAsset)}
+                            >
+                              Delete
+                            </button>
                           </div>
                         </>
                           );
@@ -766,6 +940,13 @@ export default function Page() {
                                 >
                                   {reusedAssetKeys.includes(effectiveAssetKey) ? "Undo Reuse" : "Reuse"}
                                 </button>
+                                <button
+                                  type="button"
+                                  className="secondary-button danger-button"
+                                  onClick={() => removeAsset(selectedAsset)}
+                                >
+                                  Delete
+                                </button>
                               </div>
                             </>
                           );
@@ -773,6 +954,16 @@ export default function Page() {
                       ) : null}
                     </section>
                   </section>
+
+                  <div className="asset-footer-actions">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={resetAssetList}
+                    >
+                      Reset Asset List
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <section className="panel placeholder-panel">

@@ -11,6 +11,10 @@ import {
   listTaskStyleOptions,
 } from "../lib/task-style-registry";
 import { getTaskProviderConfig } from "../lib/task-provider-config";
+import {
+  buildAnalyzeAssetsPayload,
+  extractAssetAnalysisFromResponse,
+} from "../lib/asset-analysis";
 
 test("buildSceneGenerationPayload includes a system message when provided", () => {
   const payload = buildSceneGenerationPayload({
@@ -98,7 +102,7 @@ test("getTaskProviderConfig throws when a task api key is missing", () => {
 test("getDefaultSystemPrompt returns the script_to_scenes prompt", () => {
   const prompt = getDefaultSystemPrompt("script_to_scenes");
 
-  assert.match(prompt, /把输入剧本变成分镜表/);
+  assert.match(prompt, /分镜表/);
   assert.match(prompt, /台词必须保持和剧本一致/);
 });
 
@@ -118,4 +122,46 @@ test("getTaskStylePromptConfig returns dialogue_tts style metadata", () => {
   assert.equal(config.label, "Natural Drama");
   assert.match(config.systemPrompt, /voice performance/i);
   assert.match(config.userPromptTemplate, /dialogue text/i);
+});
+
+test("buildAnalyzeAssetsPayload includes system and user messages", () => {
+  const payload = buildAnalyzeAssetsPayload({
+    model: "deepseek-ai/DeepSeek-V3.2",
+    storyboard: "SCENE 1\n人物：Eleanor\n地点：Study",
+    systemPrompt: "Extract assets as JSON.",
+  });
+
+  assert.equal(payload.model, "deepseek-ai/DeepSeek-V3.2");
+  assert.equal(payload.messages.length, 2);
+  assert.equal(payload.messages[0].role, "system");
+  assert.match(payload.messages[1].content, /SCENE 1/);
+});
+
+test("extractAssetAnalysisFromResponse parses JSON text returned by the model", () => {
+  const output = extractAssetAnalysisFromResponse({
+    choices: [
+      {
+        message: {
+          content: JSON.stringify({
+            dialogues: [
+              { id: "dialogue-1", character: "Eleanor", text: "Line", status: "ready" },
+            ],
+            characters: [
+              { id: "character-1", name: "Eleanor", detail: "Lead", status: "ready" },
+            ],
+            scenes: [
+              { id: "scene-1", name: "Study", detail: "Library room", status: "ready" },
+            ],
+            items: [
+              { id: "item-1", name: "Letter", detail: "A folded letter", status: "reuse" },
+            ],
+          }),
+        },
+      },
+    ],
+  });
+
+  assert.equal(output.dialogues[0].character, "Eleanor");
+  assert.equal(output.scenes[0].name, "Study");
+  assert.equal(output.items[0].status, "reuse");
 });

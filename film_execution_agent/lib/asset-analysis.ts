@@ -19,6 +19,39 @@ export type AssetAnalysisResult = {
   items: VisualAsset[];
 };
 
+type AnalyzeAssetsPayload = {
+  model: string;
+  temperature: number;
+  response_format?: {
+    type: "json_object";
+  };
+  messages: Array<{
+    role: "system" | "user";
+    content: string;
+  }>;
+};
+
+type ProviderResponse = {
+  choices?: Array<{
+    message?: {
+      content?:
+        | string
+        | Array<{
+            type?: string;
+            text?: string;
+          }>;
+    };
+  }>;
+};
+
+type ProviderMessageContent =
+  | string
+  | Array<{
+      type?: string;
+      text?: string;
+    }>
+  | undefined;
+
 const itemCandidates = [
   "coffee",
   "cup",
@@ -41,6 +74,105 @@ function unique<T>(items: T[]): T[] {
 
 function cleanQuotedText(value: string): string {
   return value.replace(/^["“”]+|["“”]+$/g, "").trim();
+}
+
+function extractMessageContent(content: ProviderMessageContent): string {
+  if (typeof content === "string") {
+    return content.trim();
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((block) => (block.type === "text" || !block.type ? block.text ?? "" : ""))
+      .join("")
+      .trim();
+  }
+
+  return "";
+}
+
+function normalizeDialogueAsset(asset: Partial<DialogueAsset>, index: number): DialogueAsset {
+  return {
+    id: asset.id?.trim() || `dialogue-${index + 1}`,
+    character: asset.character?.trim() || `Character ${index + 1}`,
+    text: asset.text?.trim() || "",
+    status: asset.status === "reuse" ? "reuse" : "ready",
+  };
+}
+
+function normalizeVisualAsset(asset: Partial<VisualAsset>, prefix: string, index: number): VisualAsset {
+  return {
+    id: asset.id?.trim() || `${prefix}-${index + 1}`,
+    name: asset.name?.trim() || `${prefix} ${index + 1}`,
+    detail: asset.detail?.trim() || "",
+    status: asset.status === "reuse" ? "reuse" : "ready",
+  };
+}
+
+function extractJsonObject(raw: string): string {
+  const trimmed = raw.trim();
+
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    return trimmed;
+  }
+
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+
+  if (start >= 0 && end > start) {
+    return trimmed.slice(start, end + 1);
+  }
+
+  throw new Error("No JSON object was returned by the AI provider.");
+}
+
+export function buildAnalyzeAssetsPayload({
+  model,
+  storyboard,
+  systemPrompt,
+}: {
+  model: string;
+  storyboard: string;
+  systemPrompt: string;
+}): AnalyzeAssetsPayload {
+  return {
+    model,
+    temperature: 0.2,
+    response_format: {
+      type: "json_object",
+    },
+    messages: [
+      {
+        role: "system",
+        content: systemPrompt.trim(),
+      },
+      {
+        role: "user",
+        content: `Analyze the following storyboard and return the extracted asset list as JSON only.\n\nStoryboard:\n${storyboard.trim()}`,
+      },
+    ],
+  };
+}
+
+export function extractAssetAnalysisFromResponse(response: ProviderResponse): AssetAnalysisResult {
+  const rawContent = extractMessageContent(response.choices?.[0]?.message?.content);
+  const jsonText = extractJsonObject(rawContent);
+  const parsed = JSON.parse(jsonText) as Partial<AssetAnalysisResult>;
+
+  return {
+    dialogues: (parsed.dialogues ?? []).map((asset, index) =>
+      normalizeDialogueAsset(asset, index),
+    ),
+    characters: (parsed.characters ?? []).map((asset, index) =>
+      normalizeVisualAsset(asset, "character", index),
+    ),
+    scenes: (parsed.scenes ?? []).map((asset, index) =>
+      normalizeVisualAsset(asset, "scene", index),
+    ),
+    items: (parsed.items ?? []).map((asset, index) =>
+      normalizeVisualAsset(asset, "item", index),
+    ),
+  };
 }
 
 export function analyzeStoryboardAssets(storyboard: string): AssetAnalysisResult {

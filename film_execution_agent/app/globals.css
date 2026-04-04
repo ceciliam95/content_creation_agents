@@ -264,7 +264,7 @@ h1 {
 
 .system-prompt-input {
   width: 100%;
-  min-height: 120px;
+  min-height: 220px;
   padding: 18px;
   border: 1px solid rgba(145, 120, 123, 0.14);
   border-radius: 20px;
@@ -361,6 +361,16 @@ h1 {
 .secondary-button.active {
   border-color: rgba(197, 143, 152, 0.28);
   background: rgba(244, 229, 232, 0.94);
+}
+
+.danger-button {
+  border-color: rgba(170, 112, 120, 0.18);
+  color: #8d4f57;
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: rgba(170, 112, 120, 0.28);
+  background: rgba(249, 236, 238, 0.96);
 }
 
 .secondary-button:disabled {
@@ -475,6 +485,11 @@ h1 {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  color: #8d4f57;
+}
+
+.asset-inline-error {
+  margin-top: 12px;
   color: #8d4f57;
 }
 
@@ -732,6 +747,11 @@ h1 {
   margin-bottom: 18px;
 }
 
+.asset-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .workspace-text {
   min-height: 260px;
 }
@@ -850,5 +870,13 @@ h1 {
 
   .asset-list-scroll {
     max-height: none;
+  }
+
+  .asset-footer-actions {
+    justify-content: stretch;
+  }
+
+  .asset-footer-actions .secondary-button {
+    width: 100%;
   }
 }
