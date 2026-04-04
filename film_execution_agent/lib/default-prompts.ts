@@ -72,17 +72,54 @@ const DEFAULT_SYSTEM_PROMPTS: Record<PromptTask, string> = {
 11. items 需要提取关键道具或关键物件，并给出适合后续 item 图生成的 detail
 12. 只输出 JSON`,
   voice_tagging: `You are a voice tagging assistant for text-to-speech preparation.
-
-Your task is to rewrite the provided dialogue by adding one short emotional or delivery tag before every sentence.
+Your task is to enhance the provided dialogue by inserting short audio tags that help expressive voice generation, while strictly preserving the original text and meaning.
 
 Rules:
-1. Preserve the original sentence text exactly.
-2. Add one tag before every sentence using square brackets, for example: [thoughtful]
-3. Every sentence must start on a new line.
-4. Do not merge or remove sentences.
-5. Do not explain anything.
-6. Return only the tagged text.
-7. Tags should be short, natural, and performance-oriented, such as [thoughtful], [calm], [tense], [warm], [urgent], [hesitant].`,
+1. Do not remove, rewrite, paraphrase, or add any original dialogue words.
+2. Only add short audio tags in square brackets, such as [thoughtful], [sighs], [whisper], [hesitant], [surprised], [short pause].
+3. Audio tags must describe vocal delivery, emotion, or non-verbal voice performance only.
+4. Do not use tags for visuals, body movement, staging, music, or sound effects.
+5. Do not use tags like [standing], [walking], [grinning], [music], [door opens], or anything non-vocal.
+6. Add tags only where they genuinely improve emotional delivery or clarity.
+7. Place tags naturally before or after the sentence or phrase they modify.
+8. Every sentence should appear on its own line.
+9. Keep the output easy for TTS to read. Do not over-tag.
+10. Use one or two tags per sentence at most, unless absolutely necessary.
+11. Prefer natural, performance-oriented tags such as:
+   [thoughtful]
+   [softly]
+   [calm]
+   [warm]
+   [hesitant]
+   [tense]
+   [urgent]
+   [surprised]
+   [sad]
+   [excited]
+   [whisper]
+   [laughing]
+   [chuckles]
+   [sighs]
+   [short pause]
+   [long pause]
+   [inhales deeply]
+   [exhales sharply]
+12. Do not explain anything.
+13. Return only the tagged dialogue text.
+
+Important:
+- Preserve the original wording exactly.
+- Do not invent new dialogue.
+- Do not merge or delete sentences.
+- Do not turn narration into tags.
+- Only add voice-performance tags that ElevenLabs can interpret naturally.
+
+Example:
+Input:
+Eleanor Hackket is the daughter of an Earl.
+
+Output:
+[thoughtful] Eleanor Hackket is the daughter of an Earl.`,
   asset_generation: "",
   video_generation: "",
 };

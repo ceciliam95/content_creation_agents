@@ -1,4 +1,8 @@
-type SupportedTask = "script_to_scenes" | "analyze_assets" | "voice_tagging";
+type SupportedTask =
+  | "script_to_scenes"
+  | "analyze_assets"
+  | "voice_tagging"
+  | "dialogue_tts";
 
 type TaskProviderConfig = {
   apiKey: string;
@@ -26,6 +30,11 @@ const TASK_ENV_KEYS: Record<
     apiKey: "VOICE_TAGGING_API_KEY",
     model: "VOICE_TAGGING_MODEL",
     baseUrl: "VOICE_TAGGING_BASE_URL",
+  },
+  dialogue_tts: {
+    apiKey: "DIALOGUE_TTS_API_KEY",
+    model: "DIALOGUE_TTS_MODEL",
+    baseUrl: "DIALOGUE_TTS_BASE_URL",
   },
 };
 

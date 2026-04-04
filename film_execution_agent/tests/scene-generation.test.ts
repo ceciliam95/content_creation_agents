@@ -103,6 +103,20 @@ test("getTaskProviderConfig resolves voice_tagging env vars", () => {
   });
 });
 
+test("getTaskProviderConfig resolves dialogue_tts env vars", () => {
+  const config = getTaskProviderConfig("dialogue_tts", {
+    DIALOGUE_TTS_API_KEY: "eleven-secret",
+    DIALOGUE_TTS_MODEL: "eleven_multilingual_v2",
+    DIALOGUE_TTS_BASE_URL: "https://api.elevenlabs.io",
+  });
+
+  assert.deepEqual(config, {
+    apiKey: "eleven-secret",
+    model: "eleven_multilingual_v2",
+    baseUrl: "https://api.elevenlabs.io",
+  });
+});
+
 test("getTaskProviderConfig throws when a task api key is missing", () => {
   assert.throws(
     () =>

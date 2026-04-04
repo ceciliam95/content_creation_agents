@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   type AssetAnalysisResult,
   type DialogueAsset,
@@ -11,6 +11,10 @@ import {
   type ManualAssetKind,
 } from "@/lib/asset-factory";
 import { getDefaultSystemPrompt } from "@/lib/default-prompts";
+import {
+  DEFAULT_DIALOGUE_VOICE_ID,
+  createDialogueAudioFilename,
+} from "@/lib/dialogue-tts";
 import {
   getTaskStylePromptConfig,
   listTaskStyleOptions,
@@ -51,7 +55,10 @@ type AssetKind = "dialogue" | "character" | "scene" | "item";
 type AssetListEntry =
   | { kind: "dialogue"; id: string; title: string; subtitle: string; status: "reuse" | "ready"; asset: DialogueAsset }
   | { kind: "character" | "scene" | "item"; id: string; title: string; subtitle: string; status: "reuse" | "ready"; asset: VisualAsset };
-type VoiceRole = "Narrator" | "Lead Female" | "Lead Male" | "Young Female" | "Young Male";
+type DialogueAudioResult = {
+  url: string;
+  filename: string;
+};
 
 const emptyAssetAnalysis: AssetAnalysisResult = {
   dialogues: [],
@@ -60,17 +67,9 @@ const emptyAssetAnalysis: AssetAnalysisResult = {
   items: [],
 };
 
-const dialogueStyleOptions = listTaskStyleOptions("dialogue_tts");
 const characterStyleOptions = listTaskStyleOptions("character_image");
 const sceneStyleOptions = listTaskStyleOptions("scene_image");
 const itemStyleOptions = listTaskStyleOptions("item_image");
-const voiceRoleOptions: VoiceRole[] = [
-  "Narrator",
-  "Lead Female",
-  "Lead Male",
-  "Young Female",
-  "Young Male",
-];
 
 export default function Page() {
   const [activeTab, setActiveTab] = useState<TabKey>("scenes");
@@ -94,22 +93,39 @@ export default function Page() {
   const [analyzeSystemPrompt, setAnalyzeSystemPrompt] = useState(() =>
     getDefaultSystemPrompt("analyze_assets"),
   );
-  const [dialogueStyle, setDialogueStyle] = useState(dialogueStyleOptions[0]?.value ?? "natural_drama");
   const [characterStyle, setCharacterStyle] = useState(characterStyleOptions[0]?.value ?? "2d_animation");
   const [sceneStyle, setSceneStyle] = useState(sceneStyleOptions[0]?.value ?? "2d_animation");
   const [itemStyle, setItemStyle] = useState(itemStyleOptions[0]?.value ?? "product_clean");
   const [selectedAssetKey, setSelectedAssetKey] = useState("");
-  const [voiceRole, setVoiceRole] = useState<VoiceRole>("Narrator");
   const [reusedAssetKeys, setReusedAssetKeys] = useState<string[]>([]);
   const [assetPromptDrafts, setAssetPromptDrafts] = useState<Record<string, string>>({});
   const [dialogueDrafts, setDialogueDrafts] = useState<Record<string, string>>({});
   const [dialogueOriginals, setDialogueOriginals] = useState<Record<string, string>>({});
+  const [dialogueVoiceIds, setDialogueVoiceIds] = useState<Record<string, string>>({});
+  const [dialogueAudioResults, setDialogueAudioResults] = useState<
+    Record<string, DialogueAudioResult>
+  >({});
   const [showVoiceTaggingPrompt, setShowVoiceTaggingPrompt] = useState(false);
   const [voiceTaggingSystemPrompt, setVoiceTaggingSystemPrompt] = useState(() =>
     getDefaultSystemPrompt("voice_tagging"),
   );
   const [isVoiceTagging, setIsVoiceTagging] = useState(false);
   const [voiceTaggingError, setVoiceTaggingError] = useState("");
+  const [isGeneratingTts, setIsGeneratingTts] = useState(false);
+  const [ttsError, setTtsError] = useState("");
+  const dialogueAudioResultsRef = useRef<Record<string, DialogueAudioResult>>({});
+
+  useEffect(() => {
+    dialogueAudioResultsRef.current = dialogueAudioResults;
+  }, [dialogueAudioResults]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(dialogueAudioResultsRef.current).forEach((result) => {
+        URL.revokeObjectURL(result.url);
+      });
+    };
+  }, []);
 
   async function handleGenerate() {
     if (!script.trim() || isGenerating) {
@@ -223,12 +239,20 @@ export default function Page() {
       setReusedAssetKeys([]);
       setAssetPromptDrafts({});
       setDialogueDrafts({});
+      setDialogueVoiceIds({});
+      setDialogueAudioResults((current) => {
+        Object.values(current).forEach((result) => {
+          URL.revokeObjectURL(result.url);
+        });
+        return {};
+      });
       setDialogueOriginals(
         Object.fromEntries(
           result.dialogues.map((asset) => [`dialogue:${asset.id}`, asset.text]),
         ),
       );
       setVoiceTaggingError("");
+      setTtsError("");
 
       const firstDialogue = result.dialogues[0];
       const firstCharacter = result.characters[0];
@@ -268,6 +292,13 @@ export default function Page() {
     URL.revokeObjectURL(url);
   }
 
+  function handleDownloadBlobUrl(filename: string, blobUrl: string) {
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = filename;
+    link.click();
+  }
+
   function toggleReuse(assetKey: string) {
     setReusedAssetKeys((current) =>
       current.includes(assetKey)
@@ -290,80 +321,132 @@ export default function Page() {
     }));
   }
 
-  function removeAsset(assetToRemove: AssetListEntry) {
-    setAssetAnalysis((current) => {
-      const next: AssetAnalysisResult = {
-        dialogues:
-          assetToRemove.kind === "dialogue"
-            ? current.dialogues.filter((asset) => asset.id !== assetToRemove.id)
-            : current.dialogues,
-        characters:
-          assetToRemove.kind === "character"
-            ? current.characters.filter((asset) => asset.id !== assetToRemove.id)
-            : current.characters,
-        scenes:
-          assetToRemove.kind === "scene"
-            ? current.scenes.filter((asset) => asset.id !== assetToRemove.id)
-            : current.scenes,
-        items:
-          assetToRemove.kind === "item"
-            ? current.items.filter((asset) => asset.id !== assetToRemove.id)
-            : current.items,
+  function buildAssetListEntries(analysis: AssetAnalysisResult): AssetListEntry[] {
+    return [
+      ...analysis.dialogues.map((asset) => ({
+        kind: "dialogue" as const,
+        id: asset.id,
+        title: asset.character,
+        subtitle: "Dialogue",
+        status: asset.status,
+        asset,
+      })),
+      ...analysis.characters.map((asset) => ({
+        kind: "character" as const,
+        id: asset.id,
+        title: asset.name,
+        subtitle: "Character",
+        status: asset.status,
+        asset,
+      })),
+      ...analysis.scenes.map((asset) => ({
+        kind: "scene" as const,
+        id: asset.id,
+        title: asset.name,
+        subtitle: "Scene",
+        status: asset.status,
+        asset,
+      })),
+      ...analysis.items.map((asset) => ({
+        kind: "item" as const,
+        id: asset.id,
+        title: asset.name,
+        subtitle: "Item",
+        status: asset.status,
+        asset,
+      })),
+    ];
+  }
+
+  function updateDialogueVoiceId(assetKey: string, value: string) {
+    setDialogueVoiceIds((current) => ({
+      ...current,
+      [assetKey]: value,
+    }));
+  }
+
+  function updateDialogueAudioResult(assetKey: string, result: DialogueAudioResult) {
+    setDialogueAudioResults((current) => {
+      const previous = current[assetKey];
+
+      if (previous) {
+        URL.revokeObjectURL(previous.url);
+      }
+
+      return {
+        ...current,
+        [assetKey]: result,
       };
+    });
+  }
 
-      const nextList: AssetListEntry[] = [
-        ...next.dialogues.map((asset) => ({
-          kind: "dialogue" as const,
-          id: asset.id,
-          title: asset.character,
-          subtitle: "Dialogue",
-          status: asset.status,
-          asset,
-        })),
-        ...next.characters.map((asset) => ({
-          kind: "character" as const,
-          id: asset.id,
-          title: asset.name,
-          subtitle: "Character",
-          status: asset.status,
-          asset,
-        })),
-        ...next.scenes.map((asset) => ({
-          kind: "scene" as const,
-          id: asset.id,
-          title: asset.name,
-          subtitle: "Scene",
-          status: asset.status,
-          asset,
-        })),
-        ...next.items.map((asset) => ({
-          kind: "item" as const,
-          id: asset.id,
-          title: asset.name,
-          subtitle: "Item",
-          status: asset.status,
-          asset,
-        })),
-      ];
+  function clearDialogueAudioResult(assetKey: string) {
+    setDialogueAudioResults((current) => {
+      const previous = current[assetKey];
 
-      const removedKey = `${assetToRemove.kind}:${assetToRemove.id}`;
-      const remainingSelected = nextList.find((asset) => `${asset.kind}:${asset.id}` !== removedKey);
-      setSelectedAssetKey(remainingSelected ? `${remainingSelected.kind}:${remainingSelected.id}` : "");
-      setReusedAssetKeys((currentKeys) => currentKeys.filter((key) => key !== removedKey));
-      setAssetPromptDrafts((currentDrafts) => {
-        const nextDrafts = { ...currentDrafts };
-        delete nextDrafts[removedKey];
-        return nextDrafts;
-      });
-      setDialogueDrafts((currentDrafts) => {
-        const nextDrafts = { ...currentDrafts };
-        delete nextDrafts[removedKey];
-        return nextDrafts;
-      });
-      setHasAnalyzedAssets(nextList.length > 0);
+      if (!previous) {
+        return current;
+      }
 
+      URL.revokeObjectURL(previous.url);
+      const next = { ...current };
+      delete next[assetKey];
       return next;
     });
+  }
+
+  function removeAsset(assetToRemove: AssetListEntry) {
+    const removedKey = `${assetToRemove.kind}:${assetToRemove.id}`;
+    const nextAssetAnalysis: AssetAnalysisResult = {
+      dialogues:
+        assetToRemove.kind === "dialogue"
+          ? assetAnalysis.dialogues.filter((asset) => asset.id !== assetToRemove.id)
+          : assetAnalysis.dialogues,
+      characters:
+        assetToRemove.kind === "character"
+          ? assetAnalysis.characters.filter((asset) => asset.id !== assetToRemove.id)
+          : assetAnalysis.characters,
+      scenes:
+        assetToRemove.kind === "scene"
+          ? assetAnalysis.scenes.filter((asset) => asset.id !== assetToRemove.id)
+          : assetAnalysis.scenes,
+      items:
+        assetToRemove.kind === "item"
+          ? assetAnalysis.items.filter((asset) => asset.id !== assetToRemove.id)
+          : assetAnalysis.items,
+    };
+    const nextManualAssets = manualAssets.filter(
+      (asset) => `${asset.kind}:${asset.id}` !== removedKey,
+    );
+    const nextAssetList = [...nextManualAssets, ...buildAssetListEntries(nextAssetAnalysis)];
+    const nextSelected = nextAssetList[0];
+
+    setAssetAnalysis(nextAssetAnalysis);
+    setManualAssets(nextManualAssets);
+    setSelectedAssetKey(nextSelected ? `${nextSelected.kind}:${nextSelected.id}` : "");
+    setReusedAssetKeys((currentKeys) => currentKeys.filter((key) => key !== removedKey));
+    setAssetPromptDrafts((currentDrafts) => {
+      const nextDrafts = { ...currentDrafts };
+      delete nextDrafts[removedKey];
+      return nextDrafts;
+    });
+    setDialogueDrafts((currentDrafts) => {
+      const nextDrafts = { ...currentDrafts };
+      delete nextDrafts[removedKey];
+      return nextDrafts;
+    });
+    setDialogueOriginals((currentOriginals) => {
+      const nextOriginals = { ...currentOriginals };
+      delete nextOriginals[removedKey];
+      return nextOriginals;
+    });
+    setDialogueVoiceIds((currentVoiceIds) => {
+      const nextVoiceIds = { ...currentVoiceIds };
+      delete nextVoiceIds[removedKey];
+      return nextVoiceIds;
+    });
+    clearDialogueAudioResult(removedKey);
+    setHasAnalyzedAssets(nextAssetList.length > 0);
   }
 
   function resetAssetList() {
@@ -372,10 +455,18 @@ export default function Page() {
     setReusedAssetKeys([]);
     setAssetPromptDrafts({});
     setDialogueDrafts({});
+    setDialogueVoiceIds({});
+    setDialogueAudioResults((current) => {
+      Object.values(current).forEach((result) => {
+        URL.revokeObjectURL(result.url);
+      });
+      return {};
+    });
     setDialogueOriginals({});
     setSelectedAssetKey("");
     setHasAnalyzedAssets(false);
     setAssetAnalysisError("");
+    setTtsError("");
   }
 
   async function handleVoiceTagging(assetKey: string, text: string) {
@@ -424,6 +515,57 @@ export default function Page() {
     setVoiceTaggingError("");
   }
 
+  async function handleDialogueTts(
+    assetKey: string,
+    character: string,
+    text: string,
+    voiceId: string,
+  ) {
+    if (!text.trim() || !voiceId.trim() || isGeneratingTts) {
+      return;
+    }
+
+    setIsGeneratingTts(true);
+    setTtsError("");
+
+    try {
+      const response = await fetch("/api/dialogue-tts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text,
+          voiceId,
+          filename: createDialogueAudioFilename(character),
+        }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? "TTS generation failed.");
+      }
+
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      const filename =
+        response.headers.get("X-Dialogue-Tts-Filename") ??
+        createDialogueAudioFilename(character);
+
+      updateDialogueAudioResult(assetKey, {
+        url: audioUrl,
+        filename,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "TTS generation failed.";
+
+      setTtsError(message);
+    } finally {
+      setIsGeneratingTts(false);
+    }
+  }
+
   function addManualAsset(kind: ManualAssetKind) {
     const nextIndex =
       manualAssets.filter((asset) => asset.kind === kind).length + 1;
@@ -443,6 +585,10 @@ export default function Page() {
       setDialogueOriginals((current) => ({
         ...current,
         [assetKey]: assetEntry.asset.text,
+      }));
+      setDialogueVoiceIds((current) => ({
+        ...current,
+        [assetKey]: DEFAULT_DIALOGUE_VOICE_ID,
       }));
     }
   }
@@ -865,6 +1011,9 @@ export default function Page() {
                         (() => {
                           const dialogueText =
                             dialogueDrafts[effectiveAssetKey] ?? selectedAsset.asset.text;
+                          const voiceId =
+                            dialogueVoiceIds[effectiveAssetKey] ?? DEFAULT_DIALOGUE_VOICE_ID;
+                          const audioResult = dialogueAudioResults[effectiveAssetKey];
 
                           return (
                         <>
@@ -888,31 +1037,32 @@ export default function Page() {
 
                           <div className="workspace-controls">
                             <div className="asset-style-picker compact">
-                              <span>Voice style</span>
-                              <select
-                                value={dialogueStyle}
-                                onChange={(event) => setDialogueStyle(event.target.value)}
-                              >
-                                {dialogueStyleOptions.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
+                              <span>Voice ID</span>
+                              <input
+                                type="text"
+                                className="workspace-input"
+                                value={voiceId}
+                                onChange={(event) =>
+                                  updateDialogueVoiceId(effectiveAssetKey, event.target.value)
+                                }
+                                placeholder="Paste an ElevenLabs voice ID"
+                              />
                             </div>
-                            <div className="asset-style-picker compact">
-                              <span>Voice role</span>
-                              <select
-                                value={voiceRole}
-                                onChange={(event) => setVoiceRole(event.target.value as VoiceRole)}
-                              >
-                                {voiceRoleOptions.map((option) => (
-                                  <option key={option} value={option}>
-                                    {option}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() =>
+                                handleDialogueTts(
+                                  effectiveAssetKey,
+                                  selectedAsset.asset.character,
+                                  dialogueText,
+                                  voiceId,
+                                )
+                              }
+                              disabled={!dialogueText.trim() || !voiceId.trim() || isGeneratingTts}
+                            >
+                              {isGeneratingTts ? "Generating TTS..." : "TTS Generation"}
+                            </button>
                           </div>
 
                           <div className="workspace-secondary-actions">
@@ -959,6 +1109,8 @@ export default function Page() {
                             <p className="asset-inline-error">{voiceTaggingError}</p>
                           ) : null}
 
+                          {ttsError ? <p className="asset-inline-error">{ttsError}</p> : null}
+
                           <textarea
                             className="dialogue-text-block workspace-text prompt-editor"
                             value={dialogueText}
@@ -989,9 +1141,6 @@ export default function Page() {
                             >
                               Download
                             </button>
-                            <button type="button" className="secondary-button">
-                              TTS Generation
-                            </button>
                             <button
                               type="button"
                               className="secondary-button"
@@ -1007,6 +1156,27 @@ export default function Page() {
                               Delete
                             </button>
                           </div>
+
+                          {audioResult ? (
+                            <div className="workspace-audio-card">
+                              <div className="workspace-audio-header">
+                                <div>
+                                  <span className="panel-label">Latest Audio</span>
+                                  <h4>Generated speech preview</h4>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => handleDownloadBlobUrl(audioResult.filename, audioResult.url)}
+                                >
+                                  Download
+                                </button>
+                              </div>
+                              <audio controls className="workspace-audio-player" src={audioResult.url}>
+                                Your browser does not support the audio element.
+                              </audio>
+                            </div>
+                          ) : null}
                         </>
                           );
                         })()

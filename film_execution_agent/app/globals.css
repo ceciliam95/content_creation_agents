@@ -664,6 +664,21 @@ h1 {
   color: var(--text);
 }
 
+.workspace-input {
+  padding: 12px 14px;
+  border: 1px solid rgba(145, 120, 123, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 252, 251, 0.92);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+.workspace-input:focus {
+  border-color: rgba(197, 143, 152, 0.28);
+  box-shadow: 0 0 0 4px rgba(197, 143, 152, 0.08);
+}
+
 .dialogue-grid,
 .asset-grid {
   display: grid;
@@ -795,6 +810,30 @@ h1 {
 
 .workspace-preview-card {
   margin-bottom: 18px;
+}
+
+.workspace-audio-card {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 252, 251, 0.82);
+}
+
+.workspace-audio-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.workspace-audio-header h4 {
+  margin-top: 6px;
+}
+
+.workspace-audio-player {
+  width: 100%;
 }
 
 .dot {
