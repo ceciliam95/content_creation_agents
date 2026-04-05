@@ -15,6 +15,7 @@ import {
   DEFAULT_DIALOGUE_VOICE_ID,
   createDialogueAudioFilename,
 } from "@/lib/dialogue-tts";
+import { DEFAULT_PROJECT_ROOT_FOLDER } from "@/lib/local-project-storage-config";
 import {
   getTaskStylePromptConfig,
   listTaskStyleOptions,
@@ -58,6 +59,32 @@ type AssetListEntry =
 type DialogueAudioResult = {
   url: string;
   filename: string;
+};
+type SaveDraft = {
+  name: string;
+  path: string;
+};
+type SaveTarget = {
+  panelKey: string;
+  title: string;
+  defaultName: string;
+  defaultPath: string;
+  extension: string;
+  source:
+    | {
+        type: "text";
+        content: string;
+      }
+    | {
+        type: "blob-url";
+        url: string;
+      };
+};
+type ProjectFileNode = {
+  name: string;
+  relativePath: string;
+  kind: "directory" | "file";
+  children?: ProjectFileNode[];
 };
 
 const emptyAssetAnalysis: AssetAnalysisResult = {
@@ -114,6 +141,18 @@ export default function Page() {
   const [isGeneratingTts, setIsGeneratingTts] = useState(false);
   const [ttsError, setTtsError] = useState("");
   const dialogueAudioResultsRef = useRef<Record<string, DialogueAudioResult>>({});
+  const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(false);
+  const [projectTreeOpen, setProjectTreeOpen] = useState(true);
+  const [projectRootInput, setProjectRootInput] = useState(DEFAULT_PROJECT_ROOT_FOLDER);
+  const [projectRootPath, setProjectRootPath] = useState(DEFAULT_PROJECT_ROOT_FOLDER);
+  const [projectTree, setProjectTree] = useState<ProjectFileNode | null>(null);
+  const [openProjectNodePaths, setOpenProjectNodePaths] = useState<Record<string, boolean>>({});
+  const [isRefreshingProjectTree, setIsRefreshingProjectTree] = useState(false);
+  const [projectTreeError, setProjectTreeError] = useState("");
+  const [saveDrafts, setSaveDrafts] = useState<Record<string, SaveDraft>>({});
+  const [activeSavePanelKey, setActiveSavePanelKey] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState("");
 
   useEffect(() => {
     dialogueAudioResultsRef.current = dialogueAudioResults;
@@ -125,6 +164,10 @@ export default function Page() {
         URL.revokeObjectURL(result.url);
       });
     };
+  }, []);
+
+  useEffect(() => {
+    void refreshProjectTree(DEFAULT_PROJECT_ROOT_FOLDER);
   }, []);
 
   async function handleGenerate() {
@@ -297,6 +340,298 @@ export default function Page() {
     link.href = blobUrl;
     link.download = filename;
     link.click();
+  }
+
+  function createSaveTargetFromAsset(asset: AssetListEntry): SaveTarget {
+    const relativeBasePath =
+      asset.kind === "dialogue"
+        ? "assets/vo/"
+        : asset.kind === "character"
+          ? "assets/characters/"
+          : asset.kind === "scene"
+            ? "assets/scenes/"
+            : "assets/items/";
+
+    return {
+      panelKey: `${asset.kind}:${asset.id}:source`,
+      title: asset.kind === "dialogue" ? "Save this VO asset" : "Save this visual asset",
+      defaultName: asset.kind === "dialogue" ? `${asset.asset.character} VO` : asset.title,
+      defaultPath: `${projectRootPath}\\${relativeBasePath.replace(/\//g, "\\")}`,
+      extension: "txt",
+      source: {
+        type: "text",
+        content:
+          asset.kind === "dialogue"
+            ? dialogueDrafts[`${asset.kind}:${asset.id}`] ?? asset.asset.text
+            : assetPromptDrafts[`${asset.kind}:${asset.id}`] ??
+              `${asset.title}\n${asset.asset.detail}`,
+      },
+    };
+  }
+
+  function createSaveTargetFromDialogueAudio(asset: AssetListEntry): SaveTarget {
+    return {
+      panelKey: `${asset.kind}:${asset.id}:audio`,
+      title: "Save this generated audio",
+      defaultName:
+        asset.kind === "dialogue" ? `${asset.asset.character} TTS` : `${asset.title} TTS`,
+      defaultPath: `${projectRootPath}\\assets\\vo`,
+      extension: "mp3",
+      source: {
+        type: "blob-url",
+        url: dialogueAudioResults[`${asset.kind}:${asset.id}`]?.url ?? "",
+      },
+    };
+  }
+
+  function getDefaultSaveDraft(target: SaveTarget): SaveDraft {
+    return {
+      name: target.defaultName,
+      path: target.defaultPath,
+    };
+  }
+
+  function updateSaveDraft(panelKey: string, field: keyof SaveDraft, value: string) {
+    setSaveDrafts((current) => ({
+      ...current,
+      [panelKey]: {
+        ...(current[panelKey] ?? { name: "", path: "" }),
+        [field]: value,
+      },
+    }));
+  }
+
+  function openSavePanel(target: SaveTarget) {
+    setSaveDrafts((current) => ({
+      ...current,
+      [target.panelKey]: current[target.panelKey] ?? getDefaultSaveDraft(target),
+    }));
+    setActiveSavePanelKey(target.panelKey);
+  }
+
+  async function blobUrlToBase64(blobUrl: string): Promise<string> {
+    const response = await fetch(blobUrl);
+    const blob = await response.blob();
+    const buffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+
+    bytes.forEach((value) => {
+      binary += String.fromCharCode(value);
+    });
+
+    return btoa(binary);
+  }
+
+  async function refreshProjectTree(rootPath: string) {
+    setIsRefreshingProjectTree(true);
+    setProjectTreeError("");
+
+    try {
+      const response = await fetch("/api/project-files", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ rootPath }),
+      });
+
+      const data = (await response.json()) as {
+        tree?: ProjectFileNode;
+        error?: string;
+      };
+
+      if (!response.ok || !data.tree) {
+        throw new Error(data.error ?? "Failed to load the project folder.");
+      }
+
+      setProjectTree(data.tree);
+      setProjectRootPath(rootPath);
+      setOpenProjectNodePaths((current) => ({
+        ...current,
+        [data.tree.relativePath || "__root__"]: true,
+      }));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to load the project folder.";
+
+      setProjectTreeError(message);
+    } finally {
+      setIsRefreshingProjectTree(false);
+    }
+  }
+
+  async function handleSetProjectRoot() {
+    const trimmed = projectRootInput.trim();
+
+    if (!trimmed) {
+      return;
+    }
+
+    await refreshProjectTree(trimmed);
+  }
+
+  async function handleSaveTarget(target: SaveTarget) {
+    const draft = saveDrafts[target.panelKey] ?? getDefaultSaveDraft(target);
+    const trimmedName = draft.name.trim();
+    const trimmedPath = draft.path.trim();
+
+    if (!trimmedName || !trimmedPath) {
+      return;
+    }
+
+    setSaveError("");
+    setSaveSuccessMessage("");
+
+    try {
+      const payload =
+        target.source.type === "text"
+          ? {
+              rootPath: projectRootPath,
+              relativeFolder: trimmedPath,
+              fileName: trimmedName,
+              extension: target.extension,
+              textContent: target.source.content,
+            }
+          : {
+              rootPath: projectRootPath,
+              relativeFolder: trimmedPath,
+              fileName: trimmedName,
+              extension: target.extension,
+              base64Content: await blobUrlToBase64(target.source.url),
+            };
+
+      const response = await fetch("/api/project-save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = (await response.json()) as {
+        saved?: boolean;
+        relativeFilePath?: string;
+        error?: string;
+      };
+
+      if (!response.ok || !data.saved) {
+        throw new Error(data.error ?? "Failed to save the asset.");
+      }
+
+      setSaveSuccessMessage(`Saved to ${data.relativeFilePath}`);
+      setProjectTreeOpen(true);
+      setActiveSavePanelKey("");
+      await refreshProjectTree(projectRootPath);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to save the asset.";
+
+      setSaveError(message);
+    }
+  }
+
+  function renderSavePanel(target: SaveTarget) {
+    return (
+      <div className="save-panel">
+        <div className="save-panel-header">
+          <div>
+            <span className="panel-label">Save to Project</span>
+            <h4>{target.title}</h4>
+          </div>
+        </div>
+        <div className="save-form-grid">
+          <label className="save-field">
+            <span>Asset name</span>
+            <input
+              type="text"
+              className="workspace-input"
+              value={
+                saveDrafts[target.panelKey]?.name ??
+                getDefaultSaveDraft(target).name
+              }
+              onChange={(event) =>
+                updateSaveDraft(target.panelKey, "name", event.target.value)
+              }
+            />
+          </label>
+          <label className="save-field">
+            <span>Path</span>
+            <input
+              type="text"
+              className="workspace-input"
+              value={
+                saveDrafts[target.panelKey]?.path ??
+                getDefaultSaveDraft(target).path
+              }
+              onChange={(event) =>
+                updateSaveDraft(target.panelKey, "path", event.target.value)
+              }
+            />
+          </label>
+        </div>
+        <div className="save-panel-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setActiveSavePanelKey("")}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="secondary-button save-confirm-button"
+            onClick={() => handleSaveTarget(target)}
+          >
+            Confirm Save
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderProjectTree(node: ProjectFileNode): JSX.Element {
+    const nodeKey = node.relativePath || "__root__";
+    const isOpen = openProjectNodePaths[nodeKey] ?? true;
+
+    return (
+      <div className="project-asset-section" key={`${node.kind}:${node.relativePath || node.name}`}>
+        <button
+          type="button"
+          className="project-tree-node nested directory-node"
+          onClick={() =>
+            setOpenProjectNodePaths((current) => ({
+              ...current,
+              [nodeKey]: !isOpen,
+            }))
+          }
+        >
+          <span>{isOpen ? "−" : "+"}</span>
+          <strong>{node.name}</strong>
+          <em>{node.children?.length ?? 0}</em>
+        </button>
+        <div className="project-asset-item path-meta">
+          <span>{node.relativePath || projectRootPath}</span>
+        </div>
+        {node.kind === "directory" && node.children?.length ? (
+          <div className={isOpen ? "project-asset-list" : "project-asset-list hidden"}>
+            {node.children.map((child) =>
+              child.kind === "directory" ? (
+                renderProjectTree(child)
+              ) : (
+                <div
+                  key={`${child.kind}:${child.relativePath}`}
+                  className="project-asset-item file"
+                >
+                  <strong>{child.name}</strong>
+                  <span>{child.relativePath}</span>
+                </div>
+              ),
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   function toggleReuse(assetKey: string) {
@@ -689,6 +1024,84 @@ export default function Page() {
       <div className="atmosphere atmosphere-left" />
       <div className="atmosphere atmosphere-right" />
 
+      <div className="workspace-shell">
+      <aside
+        className={
+          isProjectSidebarCollapsed
+            ? "project-sidebar collapsed"
+            : "project-sidebar"
+        }
+      >
+        <div className="project-sidebar-top">
+          <div>
+            <span className="panel-label">Library</span>
+            {!isProjectSidebarCollapsed ? <h2>Project Assets</h2> : null}
+          </div>
+          <button
+            type="button"
+            className="secondary-button project-sidebar-toggle"
+            onClick={() => setIsProjectSidebarCollapsed((current) => !current)}
+          >
+            {isProjectSidebarCollapsed ? "→" : "←"}
+          </button>
+        </div>
+
+        {isProjectSidebarCollapsed ? (
+          <div className="project-sidebar-collapsed-copy">
+            <span>Project</span>
+            <span>Assets</span>
+          </div>
+        ) : (
+          <div className="project-tree">
+            <div className="project-root-controls">
+              <label className="save-field">
+                <span>Project root folder</span>
+                <input
+                  type="text"
+                  className="workspace-input project-root-input"
+                  value={projectRootInput}
+                  onChange={(event) => setProjectRootInput(event.target.value)}
+                />
+              </label>
+              <div className="project-root-actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => void handleSetProjectRoot()}
+                >
+                  Set Root Folder
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => void refreshProjectTree(projectRootPath)}
+                  disabled={isRefreshingProjectTree}
+                >
+                  {isRefreshingProjectTree ? "Refreshing..." : "Refresh"}
+                </button>
+              </div>
+            </div>
+
+            {projectTreeError ? <p className="asset-inline-error sidebar-error">{projectTreeError}</p> : null}
+
+            <button
+              type="button"
+              className="project-tree-node"
+              onClick={() => setProjectTreeOpen((current) => !current)}
+            >
+              <span>{projectTreeOpen ? "−" : "+"}</span>
+              <strong>Project</strong>
+            </button>
+
+            {projectTreeOpen ? (
+              <div className="project-tree-branch">
+                {projectTree ? renderProjectTree(projectTree) : <p className="project-asset-empty">No project folder loaded yet.</p>}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </aside>
+
       <section className="workspace-frame">
         <header className="header-block">
           <div>
@@ -906,6 +1319,8 @@ export default function Page() {
               </div>
 
               {assetAnalysisError ? <p className="asset-inline-error">{assetAnalysisError}</p> : null}
+              {saveSuccessMessage ? <p className="asset-inline-success">{saveSuccessMessage}</p> : null}
+              {saveError ? <p className="asset-inline-error">{saveError}</p> : null}
             </section>
 
             <section className="asset-analysis-shell">
@@ -1014,6 +1429,8 @@ export default function Page() {
                           const voiceId =
                             dialogueVoiceIds[effectiveAssetKey] ?? DEFAULT_DIALOGUE_VOICE_ID;
                           const audioResult = dialogueAudioResults[effectiveAssetKey];
+                          const sourceSaveTarget = createSaveTargetFromAsset(selectedAsset);
+                          const audioSaveTarget = createSaveTargetFromDialogueAudio(selectedAsset);
 
                           return (
                         <>
@@ -1144,6 +1561,13 @@ export default function Page() {
                             <button
                               type="button"
                               className="secondary-button"
+                              onClick={() => openSavePanel(sourceSaveTarget)}
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button"
                               onClick={() => toggleReuse(effectiveAssetKey)}
                             >
                               {reusedAssetKeys.includes(effectiveAssetKey) ? "Undo Reuse" : "Reuse"}
@@ -1157,6 +1581,10 @@ export default function Page() {
                             </button>
                           </div>
 
+                          {activeSavePanelKey === sourceSaveTarget.panelKey
+                            ? renderSavePanel(sourceSaveTarget)
+                            : null}
+
                           {audioResult ? (
                             <div className="workspace-audio-card">
                               <div className="workspace-audio-header">
@@ -1164,17 +1592,29 @@ export default function Page() {
                                   <span className="panel-label">Latest Audio</span>
                                   <h4>Generated speech preview</h4>
                                 </div>
-                                <button
-                                  type="button"
-                                  className="secondary-button"
-                                  onClick={() => handleDownloadBlobUrl(audioResult.filename, audioResult.url)}
-                                >
-                                  Download
-                                </button>
+                                <div className="workspace-audio-actions">
+                                  <button
+                                    type="button"
+                                    className="secondary-button"
+                                    onClick={() => openSavePanel(audioSaveTarget)}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="secondary-button"
+                                    onClick={() => handleDownloadBlobUrl(audioResult.filename, audioResult.url)}
+                                  >
+                                    Download
+                                  </button>
+                                </div>
                               </div>
                               <audio controls className="workspace-audio-player" src={audioResult.url}>
                                 Your browser does not support the audio element.
                               </audio>
+                              {activeSavePanelKey === audioSaveTarget.panelKey
+                                ? renderSavePanel(audioSaveTarget)
+                                : null}
                             </div>
                           ) : null}
                         </>
@@ -1187,6 +1627,7 @@ export default function Page() {
                             visualConfig.task,
                             visualConfig.style,
                           );
+                          const sourceSaveTarget = createSaveTargetFromAsset(selectedAsset);
                           const defaultPromptText = styleConfig.userPromptTemplate.replace(
                             "{{input}}",
                             `${selectedAsset.title}\n${selectedAsset.asset.detail}`,
@@ -1274,6 +1715,13 @@ export default function Page() {
                                 >
                                   Download
                                 </button>
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => openSavePanel(sourceSaveTarget)}
+                                >
+                                  Save
+                                </button>
                                 <button type="button" className="secondary-button">
                                   Asset Generation
                                 </button>
@@ -1292,6 +1740,10 @@ export default function Page() {
                                   Delete
                                 </button>
                               </div>
+
+                              {activeSavePanelKey === sourceSaveTarget.panelKey
+                                ? renderSavePanel(sourceSaveTarget)
+                                : null}
                             </>
                           );
                         })()
@@ -1323,19 +1775,20 @@ export default function Page() {
           </div>
         ) : (
           <section className="panel placeholder-panel">
-            <span className="panel-label">Coming next</span>
-            <h2>Storyboard to video</h2>
+            <span className="panel-label">Project-linked preview</span>
+            <h2>Video generation workspace</h2>
             <p>
-              This area will later handle the flow of sending storyboard text to an API for video generation. For now,
-              it stays as a simple placeholder.
+              This tab will later let you pull saved VO, scene frames, character references, and item assets directly
+              from the project library before sending them into a video generation flow.
             </p>
             <div className="placeholder-note">
               <span className="dot" />
-              Video generation module placeholder
+              Future step: select saved project assets for video generation
             </div>
           </section>
         )}
       </section>
+      </div>
     </main>
   );
 }
