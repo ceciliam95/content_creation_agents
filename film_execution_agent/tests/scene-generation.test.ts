@@ -16,6 +16,10 @@ import {
   extractAssetAnalysisFromResponse,
 } from "../lib/asset-analysis";
 import { createManualAsset } from "../lib/asset-factory";
+import {
+  buildPromptTemplatePath,
+  sanitizePromptTemplateName,
+} from "../lib/prompt-library";
 
 test("buildSceneGenerationPayload includes a system message when provided", () => {
   const payload = buildSceneGenerationPayload({
@@ -226,4 +230,20 @@ test("createManualAsset creates a character asset with a starter name", () => {
   assert.equal(asset.asset.id, "character-manual-2");
   assert.equal(asset.asset.name, "New Character 2");
   assert.equal(asset.subtitle, "Character");
+});
+
+test("sanitizePromptTemplateName appends txt and strips invalid characters", () => {
+  const fileName = sanitizePromptTemplateName('default:item prompt?.txt');
+
+  assert.equal(fileName, "defaultitem prompt.txt");
+});
+
+test("buildPromptTemplatePath stays inside the prompt library folder", () => {
+  const output = buildPromptTemplatePath(
+    "C:\\workspace\\image_generation_prompts",
+    "default item prompt",
+  );
+
+  assert.match(output.filePath, /default item prompt\.txt$/i);
+  assert.equal(output.fileName, "default item prompt.txt");
 });

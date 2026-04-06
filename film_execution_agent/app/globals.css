@@ -56,6 +56,11 @@ select {
   margin: 18px auto;
 }
 
+.sidebar-column {
+  display: grid;
+  gap: 16px;
+}
+
 .atmosphere {
   position: absolute;
   border-radius: 999px;
@@ -95,7 +100,7 @@ select {
 .project-sidebar {
   position: sticky;
   top: 18px;
-  width: 336px;
+  width: 438px;
   min-height: calc(100vh - 36px);
   padding: 22px 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -109,6 +114,27 @@ select {
 }
 
 .project-sidebar.collapsed {
+  width: 88px;
+  padding: 16px 10px;
+  border-radius: 24px;
+}
+
+.prompt-sidebar {
+  position: sticky;
+  top: calc(18px + 52vh);
+  width: 438px;
+  padding: 22px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(129, 73, 84, 0.98) 0%, rgba(109, 59, 71, 0.98) 100%);
+  box-shadow: 0 24px 70px rgba(85, 42, 52, 0.22);
+  backdrop-filter: blur(18px);
+  color: #fff4f5;
+  transition: width 180ms ease, padding 180ms ease, border-radius 180ms ease;
+}
+
+.prompt-sidebar.collapsed {
   width: 88px;
   padding: 16px 10px;
   border-radius: 24px;
@@ -154,6 +180,10 @@ select {
   text-orientation: mixed;
 }
 
+.prompt-collapsed-copy {
+  color: rgba(255, 241, 243, 0.82);
+}
+
 .project-tree {
   display: grid;
   gap: 10px;
@@ -175,6 +205,10 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.prompt-tree-node {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .project-tree-node {
@@ -269,6 +303,46 @@ select {
 
 .directory-node {
   border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.prompt-template-list {
+  padding-left: 0;
+}
+
+.prompt-template-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff4f5;
+  cursor: grab;
+}
+
+.prompt-template-item:active {
+  cursor: grabbing;
+}
+
+.prompt-template-item strong {
+  font-weight: 500;
+}
+
+.prompt-delete-button {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 244, 245, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff4f5;
+}
+
+.prompt-delete-button:hover {
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .project-asset-item strong {
@@ -1022,6 +1096,30 @@ h1 {
   margin-bottom: 18px;
 }
 
+.workspace-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.prompt-save-inline {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 252, 251, 0.82);
+}
+
+.prompt-save-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .workspace-audio-card {
   margin-top: 18px;
   padding: 16px;
@@ -1151,7 +1249,9 @@ h1 {
   }
 
   .project-sidebar,
-  .project-sidebar.collapsed {
+  .project-sidebar.collapsed,
+  .prompt-sidebar,
+  .prompt-sidebar.collapsed {
     position: relative;
     top: 0;
     width: 100%;

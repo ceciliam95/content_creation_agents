@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type DragEvent, useEffect, useRef, useState } from "react";
 import {
   type AssetAnalysisResult,
   type DialogueAsset,
@@ -16,11 +16,6 @@ import {
   createDialogueAudioFilename,
 } from "@/lib/dialogue-tts";
 import { DEFAULT_PROJECT_ROOT_FOLDER } from "@/lib/local-project-storage-config";
-import {
-  getTaskStylePromptConfig,
-  listTaskStyleOptions,
-  type RegistryTask,
-} from "@/lib/task-style-registry";
 
 const sampleScript = `5 a.m. The city is not fully awake yet. She stands outside a corner convenience store holding a hot coffee, watching the bus stop across the street. The wind lifts her hair as a bus slowly approaches in the distance.`;
 const sampleStoryboardAssetInput = `SCENE 1
@@ -86,6 +81,14 @@ type ProjectFileNode = {
   kind: "directory" | "file";
   children?: ProjectFileNode[];
 };
+type PromptTemplate = {
+  fileName: string;
+  content: string;
+};
+type PromptSaveDraft = {
+  fileName: string;
+};
+type PromptSaveState = "idle" | "saved";
 
 const emptyAssetAnalysis: AssetAnalysisResult = {
   dialogues: [],
@@ -93,10 +96,6 @@ const emptyAssetAnalysis: AssetAnalysisResult = {
   scenes: [],
   items: [],
 };
-
-const characterStyleOptions = listTaskStyleOptions("character_image");
-const sceneStyleOptions = listTaskStyleOptions("scene_image");
-const itemStyleOptions = listTaskStyleOptions("item_image");
 
 export default function Page() {
   const [activeTab, setActiveTab] = useState<TabKey>("scenes");
@@ -120,9 +119,6 @@ export default function Page() {
   const [analyzeSystemPrompt, setAnalyzeSystemPrompt] = useState(() =>
     getDefaultSystemPrompt("analyze_assets"),
   );
-  const [characterStyle, setCharacterStyle] = useState(characterStyleOptions[0]?.value ?? "2d_animation");
-  const [sceneStyle, setSceneStyle] = useState(sceneStyleOptions[0]?.value ?? "2d_animation");
-  const [itemStyle, setItemStyle] = useState(itemStyleOptions[0]?.value ?? "product_clean");
   const [selectedAssetKey, setSelectedAssetKey] = useState("");
   const [reusedAssetKeys, setReusedAssetKeys] = useState<string[]>([]);
   const [assetPromptDrafts, setAssetPromptDrafts] = useState<Record<string, string>>({});
@@ -141,14 +137,22 @@ export default function Page() {
   const [isGeneratingTts, setIsGeneratingTts] = useState(false);
   const [ttsError, setTtsError] = useState("");
   const dialogueAudioResultsRef = useRef<Record<string, DialogueAudioResult>>({});
-  const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(false);
-  const [projectTreeOpen, setProjectTreeOpen] = useState(true);
+  const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(true);
+  const [projectTreeOpen, setProjectTreeOpen] = useState(false);
   const [projectRootInput, setProjectRootInput] = useState(DEFAULT_PROJECT_ROOT_FOLDER);
   const [projectRootPath, setProjectRootPath] = useState(DEFAULT_PROJECT_ROOT_FOLDER);
   const [projectTree, setProjectTree] = useState<ProjectFileNode | null>(null);
   const [openProjectNodePaths, setOpenProjectNodePaths] = useState<Record<string, boolean>>({});
   const [isRefreshingProjectTree, setIsRefreshingProjectTree] = useState(false);
   const [projectTreeError, setProjectTreeError] = useState("");
+  const [isPromptSidebarCollapsed, setIsPromptSidebarCollapsed] = useState(false);
+  const [promptLibraryCollapsed, setPromptLibraryCollapsed] = useState(false);
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
+  const [isLoadingPromptTemplates, setIsLoadingPromptTemplates] = useState(false);
+  const [promptLibraryError, setPromptLibraryError] = useState("");
+  const [promptSaveStates, setPromptSaveStates] = useState<Record<string, PromptSaveState>>({});
+  const [activePromptSaveAssetKey, setActivePromptSaveAssetKey] = useState("");
+  const [promptSaveDrafts, setPromptSaveDrafts] = useState<Record<string, PromptSaveDraft>>({});
   const [saveDrafts, setSaveDrafts] = useState<Record<string, SaveDraft>>({});
   const [activeSavePanelKey, setActiveSavePanelKey] = useState("");
   const [saveError, setSaveError] = useState("");
@@ -168,6 +172,10 @@ export default function Page() {
 
   useEffect(() => {
     void refreshProjectTree(DEFAULT_PROJECT_ROOT_FOLDER);
+  }, []);
+
+  useEffect(() => {
+    void refreshPromptTemplates();
   }, []);
 
   async function handleGenerate() {
@@ -461,6 +469,35 @@ export default function Page() {
     }
   }
 
+  async function refreshPromptTemplates() {
+    setIsLoadingPromptTemplates(true);
+    setPromptLibraryError("");
+
+    try {
+      const response = await fetch("/api/prompt-library", {
+        method: "GET",
+      });
+
+      const data = (await response.json()) as {
+        templates?: PromptTemplate[];
+        error?: string;
+      };
+
+      if (!response.ok || !data.templates) {
+        throw new Error(data.error ?? "Failed to load prompt templates.");
+      }
+
+      setPromptTemplates(data.templates);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to load prompt templates.";
+
+      setPromptLibraryError(message);
+    } finally {
+      setIsLoadingPromptTemplates(false);
+    }
+  }
+
   async function handleSetProjectRoot() {
     const trimmed = projectRootInput.trim();
 
@@ -469,6 +506,38 @@ export default function Page() {
     }
 
     await refreshProjectTree(trimmed);
+  }
+
+  async function handleDeletePromptTemplate(fileName: string) {
+    setPromptLibraryError("");
+
+    try {
+      const response = await fetch("/api/prompt-library", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ fileName }),
+      });
+
+      const data = (await response.json()) as {
+        deleted?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !data.deleted) {
+        throw new Error(data.error ?? "Failed to delete the prompt template.");
+      }
+
+      setPromptTemplates((current) =>
+        current.filter((template) => template.fileName !== fileName),
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to delete the prompt template.";
+
+      setPromptLibraryError(message);
+    }
   }
 
   async function handleSaveTarget(target: SaveTarget) {
@@ -691,6 +760,131 @@ export default function Page() {
         asset,
       })),
     ];
+  }
+
+  function buildPrototypePrompt(asset: AssetListEntry): string {
+    return `Generation Task:
+${asset.kind === "character" ? "Character reference" : asset.kind === "scene" ? "Scene concept image" : "Item reference image"}
+
+Style:
+Dusty rose editorial concept art
+
+Requirement:
+Create an image prompt using the following asset information:
+${asset.title}
+${asset.kind !== "dialogue" ? asset.asset.detail : ""}
+
+Do:
+- Keep the visual language intentional
+- Preserve key identity details
+- Make the result production-friendly
+
+Don't:
+- Do not add random extra elements
+- Do not change core identity cues
+- Do not make the composition generic`;
+  }
+
+  function handlePromptTemplateDrop(
+    event: DragEvent<HTMLTextAreaElement>,
+    assetKey: string,
+  ) {
+    event.preventDefault();
+    const templateContent = event.dataTransfer.getData("text/plain");
+
+    if (!templateContent) {
+      return;
+    }
+
+    updateAssetPromptDraft(assetKey, templateContent);
+  }
+
+  function handlePromptTemplateSave(assetKey: string, fallbackPrompt: string) {
+    const promptText = assetPromptDrafts[assetKey] ?? fallbackPrompt;
+    const fileName = promptSaveDrafts[assetKey]?.fileName?.trim() ?? "";
+
+    if (!promptText.trim() || !fileName) {
+      return;
+    }
+
+    void (async () => {
+      setPromptLibraryError("");
+
+      try {
+        const response = await fetch("/api/prompt-library", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fileName,
+            content: promptText,
+          }),
+        });
+
+        const data = (await response.json()) as {
+          saved?: boolean;
+          template?: PromptTemplate;
+          error?: string;
+        };
+
+        if (!response.ok || !data.saved || !data.template) {
+          throw new Error(data.error ?? "Failed to save the prompt template.");
+        }
+
+        setPromptTemplates((current) => {
+          const next = current.filter(
+            (template) => template.fileName !== data.template?.fileName,
+          );
+
+          return [...next, data.template].sort((a, b) =>
+            a.fileName.localeCompare(b.fileName),
+          );
+        });
+        setPromptSaveStates((current) => ({
+          ...current,
+          [assetKey]: "saved",
+        }));
+        setActivePromptSaveAssetKey("");
+        window.setTimeout(() => {
+          setPromptSaveStates((current) => ({
+            ...current,
+            [assetKey]: "idle",
+          }));
+        }, 1600);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to save the prompt template.";
+
+        setPromptLibraryError(message);
+      }
+    })();
+  }
+
+  function openPromptSave(assetKey: string, fallbackName: string) {
+    setPromptSaveDrafts((current) => ({
+      ...current,
+      [assetKey]: current[assetKey] ?? {
+        fileName: fallbackName,
+      },
+    }));
+    setActivePromptSaveAssetKey(assetKey);
+  }
+
+  function updatePromptSaveDraft(assetKey: string, value: string) {
+    setPromptSaveDrafts((current) => ({
+      ...current,
+      [assetKey]: {
+        fileName: value,
+      },
+    }));
+  }
+
+  function confirmPromptSave(assetKey: string, fallbackPrompt: string) {
+    handlePromptTemplateSave(assetKey, fallbackPrompt);
+    setActivePromptSaveAssetKey("");
   }
 
   function updateDialogueVoiceId(assetKey: string, value: string) {
@@ -974,57 +1168,13 @@ export default function Page() {
     ? `${selectedAsset.kind}:${selectedAsset.id}`
     : "";
 
-  function getVisualWorkspaceConfig(kind: Exclude<AssetKind, "dialogue">) {
-    if (kind === "character") {
-      return {
-        task: "character_image" as RegistryTask,
-        style: characterStyle,
-        setStyle: setCharacterStyle,
-        styleOptions: characterStyleOptions,
-        taskOptions: [
-          { value: "turnaround_views", label: "Character Turnaround" },
-          { value: "identity_sheet", label: "Identity Sheet" },
-        ],
-        selectedTask: "turnaround_views",
-        generateLabel: "Asset Generation",
-      };
-    }
-
-    if (kind === "scene") {
-      return {
-        task: "scene_image" as RegistryTask,
-        style: sceneStyle,
-        setStyle: setSceneStyle,
-        styleOptions: sceneStyleOptions,
-        taskOptions: [
-          { value: "scene_frame", label: "Scene Frame" },
-          { value: "environment_sheet", label: "Environment Sheet" },
-        ],
-        selectedTask: "scene_frame",
-        generateLabel: "Asset Generation",
-      };
-    }
-
-    return {
-      task: "item_image" as RegistryTask,
-      style: itemStyle,
-      setStyle: setItemStyle,
-      styleOptions: itemStyleOptions,
-      taskOptions: [
-        { value: "prop_reference", label: "Prop Reference" },
-        { value: "hero_prop", label: "Hero Prop Shot" },
-      ],
-      selectedTask: "prop_reference",
-      generateLabel: "Asset Generation",
-    };
-  }
-
   return (
     <main className="page-shell">
       <div className="atmosphere atmosphere-left" />
       <div className="atmosphere atmosphere-right" />
 
       <div className="workspace-shell">
+      <div className="sidebar-column">
       <aside
         className={
           isProjectSidebarCollapsed
@@ -1101,6 +1251,81 @@ export default function Page() {
           </div>
         )}
       </aside>
+      <aside
+        className={
+          isPromptSidebarCollapsed
+            ? "prompt-sidebar collapsed"
+            : "prompt-sidebar"
+        }
+      >
+        <div className="project-sidebar-top">
+          <div>
+            <span className="panel-label">Library</span>
+            {!isPromptSidebarCollapsed ? <h2>Prompt Library</h2> : null}
+          </div>
+          <button
+            type="button"
+            className="secondary-button project-sidebar-toggle"
+            onClick={() => setIsPromptSidebarCollapsed((current) => !current)}
+          >
+            {isPromptSidebarCollapsed ? ">" : "<"}
+          </button>
+        </div>
+
+        {isPromptSidebarCollapsed ? (
+          <div className="project-sidebar-collapsed-copy prompt-collapsed-copy">
+            <span>Prompt</span>
+            <span>Library</span>
+          </div>
+        ) : (
+          <div className="project-tree">
+            {promptLibraryError ? (
+              <p className="asset-inline-error sidebar-error">{promptLibraryError}</p>
+            ) : null}
+            <button
+              type="button"
+              className="project-tree-node prompt-tree-node"
+              onClick={() => setPromptLibraryCollapsed((current) => !current)}
+            >
+              <span>{promptLibraryCollapsed ? "+" : "-"}</span>
+              <strong>image_generation_prompts</strong>
+              <em>{promptTemplates.length}</em>
+            </button>
+
+            {!promptLibraryCollapsed ? (
+              <div className="project-asset-list prompt-template-list">
+                {isLoadingPromptTemplates ? (
+                  <p className="project-asset-empty">Loading prompt library...</p>
+                ) : promptTemplates.length ? (
+                  promptTemplates.map((template) => (
+                    <div
+                      key={template.fileName}
+                      draggable
+                      className="prompt-template-item"
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData("text/plain", template.content);
+                        event.dataTransfer.effectAllowed = "copy";
+                      }}
+                    >
+                      <strong>{template.fileName}</strong>
+                      <button
+                        type="button"
+                        className="prompt-delete-button"
+                        onClick={() => void handleDeletePromptTemplate(template.fileName)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="project-asset-empty">No prompt templates yet.</p>
+                )}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </aside>
+      </div>
 
       <section className="workspace-frame">
         <header className="header-block">
@@ -1622,18 +1847,16 @@ export default function Page() {
                         })()
                       ) : selectedAsset ? (
                         (() => {
-                          const visualConfig = getVisualWorkspaceConfig(selectedAsset.kind);
-                          const styleConfig = getTaskStylePromptConfig(
-                            visualConfig.task,
-                            visualConfig.style,
-                          );
                           const sourceSaveTarget = createSaveTargetFromAsset(selectedAsset);
-                          const defaultPromptText = styleConfig.userPromptTemplate.replace(
-                            "{{input}}",
-                            `${selectedAsset.title}\n${selectedAsset.asset.detail}`,
-                          );
+                          const defaultPromptText = buildPrototypePrompt(selectedAsset);
                           const promptText =
                             assetPromptDrafts[effectiveAssetKey] ?? defaultPromptText;
+                          const promptSaveState =
+                            promptSaveStates[effectiveAssetKey] ?? "idle";
+                          const defaultPromptFileName = `${selectedAsset.title
+                            .trim()
+                            .replace(/\s+/g, "_")
+                            .toLowerCase()}_template.txt`;
 
                           return (
                             <>
@@ -1655,37 +1878,71 @@ export default function Page() {
                                 </span>
                               </div>
 
-                              <div className="workspace-controls">
-                                <div className="asset-style-picker compact">
-                                  <span>Generation task</span>
-                                  <select defaultValue={visualConfig.selectedTask}>
-                                    {visualConfig.taskOptions.map((option) => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div className="asset-style-picker compact">
-                                  <span>Style</span>
-                                  <select
-                                    value={visualConfig.style}
-                                    onChange={(event) => visualConfig.setStyle(event.target.value)}
-                                  >
-                                    {visualConfig.styleOptions.map((option) => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-
                               <div className="workspace-preview-card">
-                                <span className="panel-label">Prompt preview</span>
+                                <div className="workspace-preview-header">
+                                  <span className="panel-label">Prompt editor</span>
+                                  <button
+                                    type="button"
+                                    className="secondary-button"
+                                    onClick={() =>
+                                      openPromptSave(
+                                        effectiveAssetKey,
+                                        defaultPromptFileName.replace(/\.txt$/i, ""),
+                                      )
+                                    }
+                                  >
+                                    {promptSaveState === "saved" ? "Prompt Saved" : "Save Prompt"}
+                                  </button>
+                                </div>
+                                {activePromptSaveAssetKey === effectiveAssetKey ? (
+                                  <div className="prompt-save-inline">
+                                    <label className="save-field">
+                                      <span>Template file name</span>
+                                      <input
+                                        type="text"
+                                        className="workspace-input"
+                                        value={
+                                          promptSaveDrafts[effectiveAssetKey]?.fileName ??
+                                          defaultPromptFileName.replace(/\.txt$/i, "")
+                                        }
+                                        onChange={(event) =>
+                                          updatePromptSaveDraft(
+                                            effectiveAssetKey,
+                                            event.target.value,
+                                          )
+                                        }
+                                      />
+                                    </label>
+                                    <div className="prompt-save-actions">
+                                      <button
+                                        type="button"
+                                        className="secondary-button"
+                                        onClick={() => setActivePromptSaveAssetKey("")}
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="secondary-button save-confirm-button"
+                                        onClick={() =>
+                                          confirmPromptSave(
+                                            effectiveAssetKey,
+                                            defaultPromptText,
+                                          )
+                                        }
+                                      >
+                                        Confirm Save Template
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : null}
                                 <textarea
                                   className="dialogue-text-block workspace-text prompt-editor"
                                   value={promptText}
+                                  onDragOver={(event) => event.preventDefault()}
+                                  onDrop={(event) =>
+                                    handlePromptTemplateDrop(event, effectiveAssetKey)
+                                  }
                                   onChange={(event) =>
                                     updateAssetPromptDraft(
                                       effectiveAssetKey,
@@ -1720,7 +1977,7 @@ export default function Page() {
                                   className="secondary-button"
                                   onClick={() => openSavePanel(sourceSaveTarget)}
                                 >
-                                  Save
+                                  Save Asset
                                 </button>
                                 <button type="button" className="secondary-button">
                                   Asset Generation

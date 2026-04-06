@@ -1,0 +1,36 @@
+Generation Task:
+Generate a 3D item icon of a real building object with transparent background, PNG format.
+
+Style:
+Photorealistic 3D render, realistic architectural object, clean product-style asset presentation, natural materials, soft studio-quality realism.
+
+Requirements:
+- isolated single building
+- centered composition
+- transparent background with clean alpha channel
+- realistic proportions and construction details
+- visible material realism: stone, wood, roof tiles, glass, metal
+- soft natural shadow under the building
+- high clarity for game UI usage
+- polished 3D asset look
+- crisp silhouette
+- realistic depth and volume
+
+Do:
+- use realistic lighting
+- use physically believable materials
+- keep the building grounded and true to real-world architecture
+- render sharp but clean details
+- make it look like a premium game asset or product render
+- preserve readability at icon size
+
+Don't:
+- no painterly brush strokes
+- no oil painting texture
+- no stylized illustration look
+- no cartoon or anime style
+- no fantasy glow or magical effects
+- no exaggerated proportions
+- no background scene
+- no parchment, paper texture, or frame
+- no blurry edges
