@@ -152,8 +152,8 @@ export default function Page() {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [imageGenerationError, setImageGenerationError] = useState("");
   const dialogueAudioResultsRef = useRef<Record<string, DialogueAudioResult>>({});
-  const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(true);
-  const [projectTreeOpen, setProjectTreeOpen] = useState(false);
+  const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(false);
+  const [projectTreeOpen, setProjectTreeOpen] = useState(true);
   const [projectRootInput, setProjectRootInput] = useState(DEFAULT_PROJECT_ROOT_FOLDER);
   const [projectRootPath, setProjectRootPath] = useState(DEFAULT_PROJECT_ROOT_FOLDER);
   const [projectTree, setProjectTree] = useState<ProjectFileNode | null>(null);
@@ -364,6 +364,20 @@ export default function Page() {
     link.href = blobUrl;
     link.download = filename;
     link.click();
+  }
+
+  function createSaveTargetFromSceneText(): SaveTarget {
+    return {
+      panelKey: "script-to-scenes:scene-text",
+      title: "Save this scene text",
+      defaultName: "scene text",
+      defaultPath: `${projectRootPath}\\剧情设计`,
+      extension: "txt",
+      source: {
+        type: "text",
+        content: sceneText,
+      },
+    };
   }
 
   function createSaveTargetFromAsset(asset: AssetListEntry): SaveTarget {
@@ -739,6 +753,19 @@ export default function Page() {
                 <div
                   key={`${child.kind}:${child.relativePath}`}
                   className="project-asset-item file"
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(
+                      "application/json",
+                      JSON.stringify({
+                        name: child.name,
+                        relativePath: child.relativePath,
+                        kind: child.kind,
+                      }),
+                    );
+                    event.dataTransfer.setData("text/plain", child.relativePath);
+                    event.dataTransfer.effectAllowed = "copy";
+                  }}
                 >
                   <strong>{child.name}</strong>
                   <span>{child.relativePath}</span>
@@ -1468,6 +1495,11 @@ Don't:
 
         {activeTab === "scenes" ? (
           <div className="storyboard-layout">
+            {(() => {
+              const sceneTextSaveTarget = createSaveTargetFromSceneText();
+
+              return (
+                <>
             <section className="panel panel-input">
               <div className="panel-copy">
                 <span className="panel-label">Input</span>
@@ -1551,6 +1583,14 @@ Don't:
                   >
                     Download
                   </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => openSavePanel(sceneTextSaveTarget)}
+                    disabled={!sceneText || isGenerating}
+                  >
+                    Save
+                  </button>
                 </div>
               </div>
 
@@ -1589,7 +1629,13 @@ Don't:
                   </div>
                 )}
               </div>
+              {activeSavePanelKey === sceneTextSaveTarget.panelKey
+                ? renderSavePanel(sceneTextSaveTarget)
+                : null}
             </section>
+                </>
+              );
+            })()}
           </div>
         ) : activeTab === "assets" ? (
           <div className="asset-layout">
