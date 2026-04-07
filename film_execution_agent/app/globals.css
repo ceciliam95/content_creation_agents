@@ -1150,6 +1150,40 @@ h1 {
   width: 100%;
 }
 
+.workspace-image-card {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+  border-radius: 22px;
+  background: rgba(255, 252, 251, 0.84);
+}
+
+.workspace-image-card h4 {
+  margin: 6px 0 0;
+  font-size: 1.08rem;
+  font-weight: 500;
+}
+
+.workspace-image-preview {
+  display: block;
+  width: min(100%, 520px);
+  margin-top: 14px;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+  border-radius: 20px;
+  background: rgba(246, 241, 240, 0.74);
+  object-fit: contain;
+}
+
+.image-download-link {
+  text-decoration: none;
+}
+
+.image-meta {
+  margin: 12px 0 0;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
 .save-panel {
   margin-top: 18px;
   padding: 16px;

@@ -1,6 +1,6 @@
 "use client";
 
-import { type DragEvent, useEffect, useRef, useState } from "react";
+import { type DragEvent, type ReactElement, useEffect, useRef, useState } from "react";
 import {
   type AssetAnalysisResult,
   type DialogueAsset,
@@ -55,6 +55,12 @@ type DialogueAudioResult = {
   url: string;
   filename: string;
 };
+type GeneratedImageResult = {
+  url: string;
+  filename: string;
+  seed?: number;
+  inferenceMs?: number;
+};
 type SaveDraft = {
   name: string;
   path: string;
@@ -72,6 +78,10 @@ type SaveTarget = {
       }
     | {
         type: "blob-url";
+        url: string;
+      }
+    | {
+        type: "remote-url";
         url: string;
       };
 };
@@ -128,6 +138,9 @@ export default function Page() {
   const [dialogueAudioResults, setDialogueAudioResults] = useState<
     Record<string, DialogueAudioResult>
   >({});
+  const [imageGenerationResults, setImageGenerationResults] = useState<
+    Record<string, GeneratedImageResult>
+  >({});
   const [showVoiceTaggingPrompt, setShowVoiceTaggingPrompt] = useState(false);
   const [voiceTaggingSystemPrompt, setVoiceTaggingSystemPrompt] = useState(() =>
     getDefaultSystemPrompt("voice_tagging"),
@@ -136,6 +149,8 @@ export default function Page() {
   const [voiceTaggingError, setVoiceTaggingError] = useState("");
   const [isGeneratingTts, setIsGeneratingTts] = useState(false);
   const [ttsError, setTtsError] = useState("");
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [imageGenerationError, setImageGenerationError] = useState("");
   const dialogueAudioResultsRef = useRef<Record<string, DialogueAudioResult>>({});
   const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(true);
   const [projectTreeOpen, setProjectTreeOpen] = useState(false);
@@ -291,6 +306,7 @@ export default function Page() {
       setAssetPromptDrafts({});
       setDialogueDrafts({});
       setDialogueVoiceIds({});
+      setImageGenerationResults({});
       setDialogueAudioResults((current) => {
         Object.values(current).forEach((result) => {
           URL.revokeObjectURL(result.url);
@@ -392,6 +408,28 @@ export default function Page() {
     };
   }
 
+  function createSaveTargetFromGeneratedImage(asset: AssetListEntry): SaveTarget {
+    const imageResult = imageGenerationResults[`${asset.kind}:${asset.id}`];
+    const relativeBasePath =
+      asset.kind === "character"
+        ? "assets\\characters"
+        : asset.kind === "scene"
+          ? "assets\\scenes"
+          : "assets\\items";
+
+    return {
+      panelKey: `${asset.kind}:${asset.id}:image`,
+      title: "Save this generated image",
+      defaultName: `${asset.title} image`,
+      defaultPath: `${projectRootPath}\\${relativeBasePath}`,
+      extension: "png",
+      source: {
+        type: "remote-url",
+        url: imageResult?.url ?? "",
+      },
+    };
+  }
+
   function getDefaultSaveDraft(target: SaveTarget): SaveDraft {
     return {
       name: target.defaultName,
@@ -453,11 +491,13 @@ export default function Page() {
         throw new Error(data.error ?? "Failed to load the project folder.");
       }
 
-      setProjectTree(data.tree);
+      const tree = data.tree;
+
+      setProjectTree(tree);
       setProjectRootPath(rootPath);
       setOpenProjectNodePaths((current) => ({
         ...current,
-        [data.tree.relativePath || "__root__"]: true,
+        [tree.relativePath || "__root__"]: true,
       }));
     } catch (error) {
       const message =
@@ -562,13 +602,21 @@ export default function Page() {
               extension: target.extension,
               textContent: target.source.content,
             }
-          : {
-              rootPath: projectRootPath,
-              relativeFolder: trimmedPath,
-              fileName: trimmedName,
-              extension: target.extension,
-              base64Content: await blobUrlToBase64(target.source.url),
-            };
+          : target.source.type === "blob-url"
+            ? {
+                rootPath: projectRootPath,
+                relativeFolder: trimmedPath,
+                fileName: trimmedName,
+                extension: target.extension,
+                base64Content: await blobUrlToBase64(target.source.url),
+              }
+            : {
+                rootPath: projectRootPath,
+                relativeFolder: trimmedPath,
+                fileName: trimmedName,
+                extension: target.extension,
+                remoteUrl: target.source.url,
+              };
 
       const response = await fetch("/api/project-save", {
         method: "POST",
@@ -659,7 +707,7 @@ export default function Page() {
     );
   }
 
-  function renderProjectTree(node: ProjectFileNode): JSX.Element {
+  function renderProjectTree(node: ProjectFileNode): ReactElement {
     const nodeKey = node.relativePath || "__root__";
     const isOpen = openProjectNodePaths[nodeKey] ?? true;
 
@@ -832,12 +880,14 @@ Don't:
           throw new Error(data.error ?? "Failed to save the prompt template.");
         }
 
+        const savedTemplate = data.template;
+
         setPromptTemplates((current) => {
           const next = current.filter(
-            (template) => template.fileName !== data.template?.fileName,
+            (template) => template.fileName !== savedTemplate.fileName,
           );
 
-          return [...next, data.template].sort((a, b) =>
+          return [...next, savedTemplate].sort((a, b) =>
             a.fileName.localeCompare(b.fileName),
           );
         });
@@ -974,6 +1024,11 @@ Don't:
       delete nextVoiceIds[removedKey];
       return nextVoiceIds;
     });
+    setImageGenerationResults((currentResults) => {
+      const nextResults = { ...currentResults };
+      delete nextResults[removedKey];
+      return nextResults;
+    });
     clearDialogueAudioResult(removedKey);
     setHasAnalyzedAssets(nextAssetList.length > 0);
   }
@@ -985,6 +1040,7 @@ Don't:
     setAssetPromptDrafts({});
     setDialogueDrafts({});
     setDialogueVoiceIds({});
+    setImageGenerationResults({});
     setDialogueAudioResults((current) => {
       Object.values(current).forEach((result) => {
         URL.revokeObjectURL(result.url);
@@ -996,6 +1052,7 @@ Don't:
     setHasAnalyzedAssets(false);
     setAssetAnalysisError("");
     setTtsError("");
+    setImageGenerationError("");
   }
 
   async function handleVoiceTagging(assetKey: string, text: string) {
@@ -1092,6 +1149,55 @@ Don't:
       setTtsError(message);
     } finally {
       setIsGeneratingTts(false);
+    }
+  }
+
+  async function handleImageGeneration(assetKey: string, prompt: string, title: string) {
+    if (!prompt.trim() || isGeneratingImage) {
+      return;
+    }
+
+    setIsGeneratingImage(true);
+    setImageGenerationError("");
+
+    try {
+      const response = await fetch("/api/image-generation", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt }),
+      });
+
+      const data = (await response.json()) as {
+        imageUrl?: string;
+        inferenceMs?: number;
+        seed?: number;
+        error?: string;
+      };
+
+      if (!response.ok || !data.imageUrl) {
+        throw new Error(data.error ?? "Image generation failed.");
+      }
+
+      const imageUrl = data.imageUrl;
+
+      setImageGenerationResults((current) => ({
+        ...current,
+        [assetKey]: {
+          url: imageUrl,
+          filename: `${title.trim() || "generated-image"}.png`,
+          seed: data.seed,
+          inferenceMs: data.inferenceMs,
+        },
+      }));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Image generation failed.";
+
+      setImageGenerationError(message);
+    } finally {
+      setIsGeneratingImage(false);
     }
   }
 
@@ -1853,6 +1959,9 @@ Don't:
                             assetPromptDrafts[effectiveAssetKey] ?? defaultPromptText;
                           const promptSaveState =
                             promptSaveStates[effectiveAssetKey] ?? "idle";
+                          const imageResult = imageGenerationResults[effectiveAssetKey];
+                          const imageSaveTarget =
+                            createSaveTargetFromGeneratedImage(selectedAsset);
                           const defaultPromptFileName = `${selectedAsset.title
                             .trim()
                             .replace(/\s+/g, "_")
@@ -1979,8 +2088,19 @@ Don't:
                                 >
                                   Save Asset
                                 </button>
-                                <button type="button" className="secondary-button">
-                                  Asset Generation
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() =>
+                                    void handleImageGeneration(
+                                      effectiveAssetKey,
+                                      promptText,
+                                      selectedAsset.title,
+                                    )
+                                  }
+                                  disabled={isGeneratingImage}
+                                >
+                                  {isGeneratingImage ? "Generating..." : "Asset Generation"}
                                 </button>
                                 <button
                                   type="button"
@@ -2001,6 +2121,56 @@ Don't:
                               {activeSavePanelKey === sourceSaveTarget.panelKey
                                 ? renderSavePanel(sourceSaveTarget)
                                 : null}
+
+                              {imageGenerationError ? (
+                                <p className="asset-inline-error">{imageGenerationError}</p>
+                              ) : null}
+
+                              {imageResult ? (
+                                <div className="workspace-image-card">
+                                  <div className="workspace-preview-header">
+                                    <div>
+                                      <span className="panel-label">Latest Image</span>
+                                      <h4>Generated image preview</h4>
+                                    </div>
+                                    <div className="workspace-audio-actions">
+                                      <a
+                                        className="secondary-button image-download-link"
+                                        href={imageResult.url}
+                                        download={imageResult.filename}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        Download
+                                      </a>
+                                      <button
+                                        type="button"
+                                        className="secondary-button"
+                                        onClick={() => openSavePanel(imageSaveTarget)}
+                                      >
+                                        Save
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <img
+                                    className="workspace-image-preview"
+                                    src={imageResult.url}
+                                    alt={`Generated preview for ${selectedAsset.title}`}
+                                  />
+                                  <p className="image-meta">
+                                    {typeof imageResult.seed === "number"
+                                      ? `Seed: ${imageResult.seed}`
+                                      : "Seed: n/a"}
+                                    {" · "}
+                                    {typeof imageResult.inferenceMs === "number"
+                                      ? `Inference: ${imageResult.inferenceMs} ms`
+                                      : "Inference: n/a"}
+                                  </p>
+                                  {activeSavePanelKey === imageSaveTarget.panelKey
+                                    ? renderSavePanel(imageSaveTarget)
+                                    : null}
+                                </div>
+                              ) : null}
                             </>
                           );
                         })()

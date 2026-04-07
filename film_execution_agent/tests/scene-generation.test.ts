@@ -20,6 +20,10 @@ import {
   buildPromptTemplatePath,
   sanitizePromptTemplateName,
 } from "../lib/prompt-library";
+import {
+  buildImageGenerationPayload,
+  extractImageGenerationResult,
+} from "../lib/image-generation";
 
 test("buildSceneGenerationPayload includes a system message when provided", () => {
   const payload = buildSceneGenerationPayload({
@@ -118,6 +122,20 @@ test("getTaskProviderConfig resolves dialogue_tts env vars", () => {
     apiKey: "eleven-secret",
     model: "eleven_multilingual_v2",
     baseUrl: "https://api.elevenlabs.io",
+  });
+});
+
+test("getTaskProviderConfig resolves image_generation env vars", () => {
+  const config = getTaskProviderConfig("image_generation", {
+    IMAGE_GENERATION_API_KEY: "image-secret",
+    IMAGE_GENERATION_MODEL: "Qwen/Qwen-Image-Edit-2509",
+    IMAGE_GENERATION_BASE_URL: "https://api.siliconflow.cn/v1",
+  });
+
+  assert.deepEqual(config, {
+    apiKey: "image-secret",
+    model: "Qwen/Qwen-Image-Edit-2509",
+    baseUrl: "https://api.siliconflow.cn/v1",
   });
 });
 
@@ -246,4 +264,48 @@ test("buildPromptTemplatePath stays inside the prompt library folder", () => {
 
   assert.match(output.filePath, /default item prompt\.txt$/i);
   assert.equal(output.fileName, "default item prompt.txt");
+});
+
+test("buildImageGenerationPayload uses the SiliconFlow Qwen image defaults", () => {
+  const payload = buildImageGenerationPayload({
+    model: "Qwen/Qwen-Image-Edit-2509",
+    prompt: "Generate a transparent item icon.",
+  });
+
+  assert.deepEqual(payload, {
+    model: "Qwen/Qwen-Image-Edit-2509",
+    prompt: "Generate a transparent item icon.",
+    num_inference_steps: 50,
+    cfg: 4,
+  });
+});
+
+test("buildImageGenerationPayload keeps Kolors-specific image defaults", () => {
+  const payload = buildImageGenerationPayload({
+    model: "Kwai-Kolors/Kolors",
+    prompt: "Generate a transparent item icon.",
+  });
+
+  assert.deepEqual(payload, {
+    model: "Kwai-Kolors/Kolors",
+    prompt: "Generate a transparent item icon.",
+    image_size: "1024x1024",
+    batch_size: 1,
+    num_inference_steps: 20,
+    guidance_scale: 7.5,
+  });
+});
+
+test("extractImageGenerationResult returns the first generated image metadata", () => {
+  const output = extractImageGenerationResult({
+    images: [{ url: "https://example.com/generated.png" }],
+    timings: { inference: 123 },
+    seed: 987,
+  });
+
+  assert.deepEqual(output, {
+    imageUrl: "https://example.com/generated.png",
+    inferenceMs: 123,
+    seed: 987,
+  });
 });

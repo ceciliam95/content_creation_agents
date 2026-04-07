@@ -2,7 +2,8 @@ type SupportedTask =
   | "script_to_scenes"
   | "analyze_assets"
   | "voice_tagging"
-  | "dialogue_tts";
+  | "dialogue_tts"
+  | "image_generation";
 
 type TaskProviderConfig = {
   apiKey: string;
@@ -35,6 +36,11 @@ const TASK_ENV_KEYS: Record<
     apiKey: "DIALOGUE_TTS_API_KEY",
     model: "DIALOGUE_TTS_MODEL",
     baseUrl: "DIALOGUE_TTS_BASE_URL",
+  },
+  image_generation: {
+    apiKey: "IMAGE_GENERATION_API_KEY",
+    model: "IMAGE_GENERATION_MODEL",
+    baseUrl: "IMAGE_GENERATION_BASE_URL",
   },
 };
 

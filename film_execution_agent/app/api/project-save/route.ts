@@ -15,6 +15,7 @@ type ProjectSaveRequest = {
   extension?: string;
   textContent?: string;
   base64Content?: string;
+  remoteUrl?: string;
 };
 
 export async function POST(request: Request) {
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
     extension,
     textContent,
     base64Content,
+    remoteUrl,
   }: ProjectSaveRequest = await request.json();
 
   try {
@@ -51,6 +53,15 @@ export async function POST(request: Request) {
       await fs.writeFile(filePath, textContent, "utf8");
     } else if (typeof base64Content === "string") {
       await fs.writeFile(filePath, Buffer.from(base64Content, "base64"));
+    } else if (typeof remoteUrl === "string" && remoteUrl.trim()) {
+      const response = await fetch(remoteUrl);
+
+      if (!response.ok) {
+        throw new Error("Failed to download the remote file before saving.");
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      await fs.writeFile(filePath, buffer);
     } else {
       throw new Error("No file content was provided.");
     }
