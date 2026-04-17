@@ -3,7 +3,8 @@ type SupportedTask =
   | "analyze_assets"
   | "voice_tagging"
   | "dialogue_tts"
-  | "image_generation";
+  | "image_generation"
+  | "asset_description_generation";
 
 type TaskProviderConfig = {
   apiKey: string;
@@ -41,6 +42,11 @@ const TASK_ENV_KEYS: Record<
     apiKey: "IMAGE_GENERATION_API_KEY",
     model: "IMAGE_GENERATION_MODEL",
     baseUrl: "IMAGE_GENERATION_BASE_URL",
+  },
+  asset_description_generation: {
+    apiKey: "ASSET_DESCRIPTION_API_KEY",
+    model: "ASSET_DESCRIPTION_MODEL",
+    baseUrl: "ASSET_DESCRIPTION_BASE_URL",
   },
 };
 

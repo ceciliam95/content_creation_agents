@@ -132,6 +132,18 @@ export default function Page() {
   const [selectedAssetKey, setSelectedAssetKey] = useState("");
   const [reusedAssetKeys, setReusedAssetKeys] = useState<string[]>([]);
   const [assetPromptDrafts, setAssetPromptDrafts] = useState<Record<string, string>>({});
+  const [assetDescriptionDrafts, setAssetDescriptionDrafts] = useState<Record<string, string>>({});
+  const [descriptionPromptDrafts, setDescriptionPromptDrafts] = useState<Record<"character" | "scene" | "item", string>>({
+    character:
+      "Generate a concise production-ready character description covering appearance, clothing, identity cues, mood, and image-generation-relevant details.",
+    scene:
+      "Generate a concise production-ready scene description covering environment style, layout, lighting, materials, atmosphere, and key visual elements.",
+    item:
+      "Generate a concise production-ready item description covering shape, material, scale, silhouette, function, and image-generation-relevant details.",
+  });
+  const [showDescriptionPrompt, setShowDescriptionPrompt] = useState(false);
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+  const [descriptionGenerationError, setDescriptionGenerationError] = useState("");
   const [dialogueDrafts, setDialogueDrafts] = useState<Record<string, string>>({});
   const [dialogueOriginals, setDialogueOriginals] = useState<Record<string, string>>({});
   const [dialogueVoiceIds, setDialogueVoiceIds] = useState<Record<string, string>>({});
@@ -304,6 +316,7 @@ export default function Page() {
       setManualAssets([]);
       setReusedAssetKeys([]);
       setAssetPromptDrafts({});
+      setAssetDescriptionDrafts({});
       setDialogueDrafts({});
       setDialogueVoiceIds({});
       setImageGenerationResults({});
@@ -793,6 +806,61 @@ export default function Page() {
     }));
   }
 
+  function updateAssetDescriptionDraft(assetKey: string, value: string) {
+    setAssetDescriptionDrafts((current) => ({
+      ...current,
+      [assetKey]: value,
+    }));
+  }
+
+  async function handleDescriptionGeneration(
+    assetKey: string,
+    asset: AssetListEntry,
+    currentPrompt: string,
+    systemPrompt: string,
+  ) {
+    if (asset.kind === "dialogue" || isGeneratingDescription) {
+      return;
+    }
+
+    setIsGeneratingDescription(true);
+    setDescriptionGenerationError("");
+
+    try {
+      const response = await fetch("/api/asset-description-generation", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          assetKind: asset.kind,
+          assetName: asset.title,
+          assetDetail: asset.asset.detail,
+          currentPrompt,
+          systemPrompt,
+        }),
+      });
+
+      const data = (await response.json()) as {
+        description?: string;
+        error?: string;
+      };
+
+      if (!response.ok || !data.description) {
+        throw new Error(data.error ?? "Description generation failed.");
+      }
+
+      updateAssetDescriptionDraft(assetKey, data.description);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Description generation failed.";
+
+      setDescriptionGenerationError(message);
+    } finally {
+      setIsGeneratingDescription(false);
+    }
+  }
+
   function updateDialogueDraft(assetKey: string, value: string) {
     setDialogueDrafts((current) => ({
       ...current,
@@ -1036,6 +1104,11 @@ Don't:
       delete nextDrafts[removedKey];
       return nextDrafts;
     });
+    setAssetDescriptionDrafts((currentDrafts) => {
+      const nextDrafts = { ...currentDrafts };
+      delete nextDrafts[removedKey];
+      return nextDrafts;
+    });
     setDialogueDrafts((currentDrafts) => {
       const nextDrafts = { ...currentDrafts };
       delete nextDrafts[removedKey];
@@ -1065,6 +1138,7 @@ Don't:
     setManualAssets([]);
     setReusedAssetKeys([]);
     setAssetPromptDrafts({});
+    setAssetDescriptionDrafts({});
     setDialogueDrafts({});
     setDialogueVoiceIds({});
     setImageGenerationResults({});
@@ -1619,7 +1693,12 @@ Don't:
                     <p>{generationError}</p>
                   </div>
                 ) : sceneText ? (
-                  <pre>{sceneText}</pre>
+                  <textarea
+                    className="scene-text-editor"
+                    value={sceneText}
+                    onChange={(event) => setSceneText(event.target.value)}
+                    aria-label="Editable generated scene text"
+                  />
                 ) : (
                   <div className="empty-state">
                     <p className="empty-kicker">Ready when you are</p>
@@ -2003,11 +2082,31 @@ Don't:
                           const defaultPromptText = buildPrototypePrompt(selectedAsset);
                           const promptText =
                             assetPromptDrafts[effectiveAssetKey] ?? defaultPromptText;
+                          const descriptionText =
+                            assetDescriptionDrafts[effectiveAssetKey] ?? "";
                           const promptSaveState =
                             promptSaveStates[effectiveAssetKey] ?? "idle";
                           const imageResult = imageGenerationResults[effectiveAssetKey];
                           const imageSaveTarget =
                             createSaveTargetFromGeneratedImage(selectedAsset);
+                          const descriptionSaveTarget: SaveTarget = {
+                            panelKey: `${selectedAsset.kind}:${selectedAsset.id}:description`,
+                            title: "Save this asset description",
+                            defaultName: `${selectedAsset.title} description`,
+                            defaultPath:
+                              selectedAsset.kind === "character"
+                                ? `${projectRootPath}\\assets\\characters`
+                                : selectedAsset.kind === "scene"
+                                  ? `${projectRootPath}\\assets\\scenes`
+                                  : `${projectRootPath}\\assets\\items`,
+                            extension: "txt",
+                            source: {
+                              type: "text",
+                              content: descriptionText,
+                            },
+                          };
+                          const descriptionPrompt =
+                            descriptionPromptDrafts[selectedAsset.kind];
                           const defaultPromptFileName = `${selectedAsset.title
                             .trim()
                             .replace(/\s+/g, "_")
@@ -2107,6 +2206,127 @@ Don't:
                                 />
                               </div>
 
+                              <div className="workspace-description-card">
+                                <div className="workspace-preview-header">
+                                  <div>
+                                    <span className="panel-label">Asset Description</span>
+                                    <h4>Description workspace</h4>
+                                  </div>
+                                  <div className="workspace-audio-actions">
+                                    <button
+                                      type="button"
+                                      className={
+                                        showDescriptionPrompt
+                                          ? "secondary-button active"
+                                          : "secondary-button"
+                                      }
+                                      onClick={() =>
+                                        setShowDescriptionPrompt((current) => !current)
+                                      }
+                                    >
+                                      {showDescriptionPrompt
+                                        ? "Hide System Prompt"
+                                        : "View System Prompt"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={
+                                        isGeneratingDescription
+                                          ? "generate-button compact loading"
+                                          : "generate-button compact"
+                                      }
+                                      onClick={() =>
+                                        handleDescriptionGeneration(
+                                          effectiveAssetKey,
+                                          selectedAsset,
+                                          promptText,
+                                          descriptionPrompt,
+                                        )
+                                      }
+                                      disabled={isGeneratingDescription}
+                                    >
+                                      {isGeneratingDescription
+                                        ? "Generating..."
+                                        : "Description Generation"}
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {showDescriptionPrompt ? (
+                                  <div className="system-prompt-wrap description-prompt-wrap">
+                                    <label className="system-prompt-label">
+                                      {selectedAsset.kind} description system prompt
+                                    </label>
+                                    <textarea
+                                      className="system-prompt-input"
+                                      value={descriptionPrompt}
+                                      onChange={(event) =>
+                                        setDescriptionPromptDrafts((current) => ({
+                                          ...current,
+                                          [selectedAsset.kind]: event.target.value,
+                                        }))
+                                      }
+                                    />
+                                  </div>
+                                ) : null}
+
+                                <textarea
+                                  className="dialogue-text-block workspace-text prompt-editor description-editor"
+                                  value={descriptionText}
+                                  onChange={(event) =>
+                                    updateAssetDescriptionDraft(
+                                      effectiveAssetKey,
+                                      event.target.value,
+                                    )
+                                  }
+                                  placeholder="Generate or write a focused production description for this asset."
+                                />
+
+                                {descriptionGenerationError ? (
+                                  <p className="asset-inline-error">
+                                    {descriptionGenerationError}
+                                  </p>
+                                ) : null}
+
+                                <div className="asset-actions">
+                                  <button
+                                    type="button"
+                                    className="secondary-button"
+                                    onClick={() =>
+                                      navigator.clipboard.writeText(descriptionText)
+                                    }
+                                    disabled={!descriptionText.trim()}
+                                  >
+                                    Copy
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="secondary-button"
+                                    onClick={() =>
+                                      handleDownloadText(
+                                        `${selectedAsset.title}-description.txt`,
+                                        descriptionText,
+                                      )
+                                    }
+                                    disabled={!descriptionText.trim()}
+                                  >
+                                    Download
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="secondary-button"
+                                    onClick={() => openSavePanel(descriptionSaveTarget)}
+                                    disabled={!descriptionText.trim()}
+                                  >
+                                    Save
+                                  </button>
+                                </div>
+
+                                {activeSavePanelKey === descriptionSaveTarget.panelKey
+                                  ? renderSavePanel(descriptionSaveTarget)
+                                  : null}
+                              </div>
+
                               <div className="asset-actions">
                                 <button
                                   type="button"
@@ -2136,7 +2356,11 @@ Don't:
                                 </button>
                                 <button
                                   type="button"
-                                  className="secondary-button"
+                                  className={
+                                    isGeneratingImage
+                                      ? "generate-button compact loading"
+                                      : "generate-button compact"
+                                  }
                                   onClick={() =>
                                     void handleImageGeneration(
                                       effectiveAssetKey,

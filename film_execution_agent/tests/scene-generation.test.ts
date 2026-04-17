@@ -24,6 +24,10 @@ import {
   buildImageGenerationPayload,
   extractImageGenerationResult,
 } from "../lib/image-generation";
+import {
+  buildAssetDescriptionPayload,
+  extractAssetDescriptionText,
+} from "../lib/asset-description-generation";
 
 test("buildSceneGenerationPayload includes a system message when provided", () => {
   const payload = buildSceneGenerationPayload({
@@ -135,6 +139,20 @@ test("getTaskProviderConfig resolves image_generation env vars", () => {
   assert.deepEqual(config, {
     apiKey: "image-secret",
     model: "Qwen/Qwen-Image-Edit-2509",
+    baseUrl: "https://api.siliconflow.cn/v1",
+  });
+});
+
+test("getTaskProviderConfig resolves asset_description_generation env vars", () => {
+  const config = getTaskProviderConfig("asset_description_generation", {
+    ASSET_DESCRIPTION_API_KEY: "description-secret",
+    ASSET_DESCRIPTION_MODEL: "deepseek-ai/DeepSeek-V3.2",
+    ASSET_DESCRIPTION_BASE_URL: "https://api.siliconflow.cn/v1",
+  });
+
+  assert.deepEqual(config, {
+    apiKey: "description-secret",
+    model: "deepseek-ai/DeepSeek-V3.2",
     baseUrl: "https://api.siliconflow.cn/v1",
   });
 });
@@ -308,4 +326,39 @@ test("extractImageGenerationResult returns the first generated image metadata", 
     inferenceMs: 123,
     seed: 987,
   });
+});
+
+test("buildAssetDescriptionPayload includes asset context and prompt", () => {
+  const payload = buildAssetDescriptionPayload({
+    model: "deepseek-ai/DeepSeek-V3.2",
+    assetKind: "character",
+    assetName: "Eleanor",
+    assetDetail: "An aristocratic young woman.",
+    currentPrompt: "Character reference prompt",
+    systemPrompt: "Describe the character for image generation.",
+  });
+
+  assert.equal(payload.model, "deepseek-ai/DeepSeek-V3.2");
+  assert.equal(payload.messages.length, 2);
+  assert.deepEqual(payload.messages[0], {
+    role: "system",
+    content: "Describe the character for image generation.",
+  });
+  assert.match(payload.messages[1].content, /Asset Type: character/);
+  assert.match(payload.messages[1].content, /Asset Name: Eleanor/);
+  assert.match(payload.messages[1].content, /Character reference prompt/);
+});
+
+test("extractAssetDescriptionText returns assistant text", () => {
+  const output = extractAssetDescriptionText({
+    choices: [
+      {
+        message: {
+          content: "A focused production-ready character description.",
+        },
+      },
+    ],
+  });
+
+  assert.equal(output, "A focused production-ready character description.");
 });

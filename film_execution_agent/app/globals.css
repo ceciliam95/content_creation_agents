@@ -611,6 +611,15 @@ h1 {
   min-width: 152px;
 }
 
+.generate-button.compact {
+  padding: 10px 14px;
+  box-shadow: 0 12px 24px rgba(164, 111, 121, 0.14);
+}
+
+.generate-button.compact.loading {
+  min-width: 132px;
+}
+
 .output-actions {
   display: flex;
   gap: 10px;
@@ -682,6 +691,22 @@ h1 {
   white-space: pre-wrap;
   line-height: 1.8;
   font-size: 1rem;
+}
+
+.scene-text-editor {
+  width: 100%;
+  min-height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  resize: none;
+  outline: none;
+  line-height: 1.8;
+  font-size: 1rem;
+}
+
+.scene-text-editor:focus {
+  color: #2f282a;
 }
 
 .loading-stack,
@@ -1094,6 +1119,28 @@ h1 {
 
 .workspace-preview-card {
   margin-bottom: 18px;
+}
+
+.workspace-description-card {
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+  border-radius: 22px;
+  background: rgba(255, 252, 251, 0.72);
+}
+
+.workspace-description-card h4 {
+  margin: 6px 0 0;
+  font-size: 1.08rem;
+  font-weight: 500;
+}
+
+.description-prompt-wrap {
+  margin: 0 0 14px;
+}
+
+.description-editor {
+  min-height: 190px;
 }
 
 .workspace-preview-header {
