@@ -1,0 +1,19 @@
+full body character turnaround, front view, side view, back view, same character sheet, consistent design, 
+realistic human, chinese xianxia fantasy style, ethereal immortal cultivator, 
+
+[性别/年龄], [气质关键词], [面部特征], 
+long flowing hair, [发色], [发型细节], 
+
+wearing intricate hanfu, flowing robes, silk textures, embroidery with [纹样元素，如云纹/龙纹/莲花], 
+[主色调] color palette, layered costume, light fabric dynamics, 
+
+[配饰：如玉佩/法器/剑/发簪/灵气环绕], subtle magical aura, qi energy flowing, mist particles, 
+
+neutral pose, T-pose or relaxed standing, character design sheet style, no action pose, 
+
+clean background or soft gradient background, studio lighting, soft rim light, high detail skin texture, 
+ultra realistic, cinematic lighting, sharp focus, 
+
+highly detailed, 8k, photorealistic, unreal engine, octane render, 
+
+--ar 16:9 --v 6 --style raw
