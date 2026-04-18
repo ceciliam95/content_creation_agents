@@ -99,6 +99,54 @@ export function buildSavePath(
   };
 }
 
+export function buildProjectFilePath(
+  rootPath: string,
+  relativeFilePath: string,
+): { filePath: string; relativeFilePath: string } {
+  const resolvedRoot = resolveProjectRoot(rootPath);
+  const normalizedRelativePath = normalizeRelativeFolder(relativeFilePath);
+
+  if (!normalizedRelativePath) {
+    throw new Error("Project file path is required.");
+  }
+
+  const filePath = path.resolve(resolvedRoot, normalizedRelativePath);
+
+  if (!filePath.startsWith(resolvedRoot)) {
+    throw new Error("Project file path must stay within the selected project root folder.");
+  }
+
+  return {
+    filePath,
+    relativeFilePath: normalizedRelativePath,
+  };
+}
+
+export async function readProjectFileAsDataUrl(
+  rootPath: string,
+  relativeFilePath: string,
+): Promise<string> {
+  const { filePath } = buildProjectFilePath(rootPath, relativeFilePath);
+  const stats = await fs.stat(filePath).catch(() => null);
+
+  if (!stats || !stats.isFile()) {
+    throw new Error("The selected project reference image does not exist.");
+  }
+
+  const extension = path.extname(filePath).replace(/^\./, "").toLowerCase();
+  const mimeType =
+    extension === "jpg" || extension === "jpeg"
+      ? "image/jpeg"
+      : extension === "webp"
+        ? "image/webp"
+        : extension === "gif"
+          ? "image/gif"
+          : "image/png";
+  const buffer = await fs.readFile(filePath);
+
+  return `data:${mimeType};base64,${buffer.toString("base64")}`;
+}
+
 export async function ensureProjectRootExists(rootPath: string) {
   const resolvedRoot = resolveProjectRoot(rootPath);
   const stats = await fs.stat(resolvedRoot).catch(() => null);

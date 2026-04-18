@@ -62,8 +62,22 @@ type GeneratedImageResult = {
   filename: string;
   taskId?: string;
   error?: string;
+  diagnostics?: ImageGenerationDiagnostics;
   seed?: number;
   inferenceMs?: number;
+};
+type ImageGenerationDiagnostics = {
+  provider?: string;
+  endpoint?: string;
+  httpStatus?: number;
+  responseShape?: {
+    topLevelKeys?: string[];
+    hasImageUrlCandidate?: boolean;
+    hasBase64Candidate?: boolean;
+    idCandidate?: string;
+    sampleImageUrlCandidate?: string;
+    sampleBase64Candidate?: string;
+  };
 };
 type SaveDraft = {
   name: string;
@@ -99,6 +113,7 @@ type PromptTemplate = {
   fileName: string;
   content: string;
 };
+type PromptLibraryKind = "image" | "description";
 type PromptSaveDraft = {
   fileName: string;
 };
@@ -114,6 +129,7 @@ type ReferenceImage = {
   id: string;
   name: string;
   source: "upload" | "project";
+  dataUrl?: string;
   previewUrl?: string;
   path?: string;
 };
@@ -151,6 +167,9 @@ const imageModelOptions = [
     value: "viduq2",
   },
 ];
+const imageToImageModelOptions = imageModelOptions.filter((option) =>
+  ["gemini-3.1-flash-image-preview", "midjourney"].includes(option.value),
+);
 
 const imageSizeOptions = ["1K", "2K"];
 const imageAspectRatioOptions = ["1:1", "16:9", "9:16", "4:3", "3:4"];
@@ -159,15 +178,57 @@ const imageGenerationModeOptions = [
   {
     label: "Text to Image",
     value: "text_to_image",
+    disabled: false,
   },
   {
-    label: "Image to Image",
+    label: "Image to Image (Paused)",
     value: "image_to_image",
+    disabled: true,
   },
 ] as const;
 
 function getImageModelLabel(model: string) {
   return imageModelOptions.find((option) => option.value === model)?.label ?? model;
+}
+
+function getImageModelOptionsForMode(mode: ImageModelConfig["mode"]) {
+  return mode === "image_to_image" ? imageToImageModelOptions : imageModelOptions;
+}
+
+function getDefaultImageModelsForMode(mode: ImageModelConfig["mode"]) {
+  return mode === "image_to_image"
+    ? ["gemini-3.1-flash-image-preview"]
+    : defaultImageModelConfig.models;
+}
+
+function formatImageDiagnostics(diagnostics?: ImageGenerationDiagnostics) {
+  if (!diagnostics) {
+    return "";
+  }
+
+  const responseShape = diagnostics.responseShape;
+  const parts = [
+    diagnostics.provider ? `Provider: ${diagnostics.provider}` : "",
+    typeof diagnostics.httpStatus === "number" ? `HTTP: ${diagnostics.httpStatus}` : "",
+    responseShape?.topLevelKeys?.length
+      ? `Keys: ${responseShape.topLevelKeys.join(", ")}`
+      : "",
+    typeof responseShape?.hasImageUrlCandidate === "boolean"
+      ? `Image URL candidate: ${responseShape.hasImageUrlCandidate ? "yes" : "no"}`
+      : "",
+    typeof responseShape?.hasBase64Candidate === "boolean"
+      ? `Base64 candidate: ${responseShape.hasBase64Candidate ? "yes" : "no"}`
+      : "",
+    responseShape?.idCandidate ? `ID: ${responseShape.idCandidate}` : "",
+    responseShape?.sampleImageUrlCandidate
+      ? `Sample URL: ${responseShape.sampleImageUrlCandidate}`
+      : "",
+    responseShape?.sampleBase64Candidate
+      ? `Sample base64: ${responseShape.sampleBase64Candidate}`
+      : "",
+  ].filter(Boolean);
+
+  return parts.join(" | ");
 }
 
 export default function Page() {
@@ -241,7 +302,9 @@ export default function Page() {
   const [projectTreeError, setProjectTreeError] = useState("");
   const [isPromptSidebarCollapsed, setIsPromptSidebarCollapsed] = useState(false);
   const [promptLibraryCollapsed, setPromptLibraryCollapsed] = useState(false);
+  const [descriptionPromptLibraryCollapsed, setDescriptionPromptLibraryCollapsed] = useState(false);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
+  const [descriptionPromptTemplates, setDescriptionPromptTemplates] = useState<PromptTemplate[]>([]);
   const [isLoadingPromptTemplates, setIsLoadingPromptTemplates] = useState(false);
   const [promptLibraryError, setPromptLibraryError] = useState("");
   const [promptSaveStates, setPromptSaveStates] = useState<Record<string, PromptSaveState>>({});
@@ -636,20 +699,36 @@ export default function Page() {
     setPromptLibraryError("");
 
     try {
-      const response = await fetch("/api/prompt-library", {
-        method: "GET",
-      });
+      const [imageResponse, descriptionResponse] = await Promise.all([
+        fetch("/api/prompt-library?library=image", {
+          method: "GET",
+        }),
+        fetch("/api/prompt-library?library=description", {
+          method: "GET",
+        }),
+      ]);
 
-      const data = (await response.json()) as {
+      const imageData = (await imageResponse.json()) as {
+        templates?: PromptTemplate[];
+        error?: string;
+      };
+      const descriptionData = (await descriptionResponse.json()) as {
         templates?: PromptTemplate[];
         error?: string;
       };
 
-      if (!response.ok || !data.templates) {
-        throw new Error(data.error ?? "Failed to load prompt templates.");
+      if (!imageResponse.ok || !imageData.templates) {
+        throw new Error(imageData.error ?? "Failed to load image prompt templates.");
       }
 
-      setPromptTemplates(data.templates);
+      if (!descriptionResponse.ok || !descriptionData.templates) {
+        throw new Error(
+          descriptionData.error ?? "Failed to load description prompt templates.",
+        );
+      }
+
+      setPromptTemplates(imageData.templates);
+      setDescriptionPromptTemplates(descriptionData.templates);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to load prompt templates.";
@@ -670,7 +749,10 @@ export default function Page() {
     await refreshProjectTree(trimmed);
   }
 
-  async function handleDeletePromptTemplate(fileName: string) {
+  async function handleDeletePromptTemplate(
+    fileName: string,
+    library: PromptLibraryKind = "image",
+  ) {
     setPromptLibraryError("");
 
     try {
@@ -679,7 +761,7 @@ export default function Page() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ fileName }),
+        body: JSON.stringify({ fileName, library }),
       });
 
       const data = (await response.json()) as {
@@ -691,9 +773,15 @@ export default function Page() {
         throw new Error(data.error ?? "Failed to delete the prompt template.");
       }
 
-      setPromptTemplates((current) =>
-        current.filter((template) => template.fileName !== fileName),
-      );
+      if (library === "description") {
+        setDescriptionPromptTemplates((current) =>
+          current.filter((template) => template.fileName !== fileName),
+        );
+      } else {
+        setPromptTemplates((current) =>
+          current.filter((template) => template.fileName !== fileName),
+        );
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to delete the prompt template.";
@@ -915,9 +1003,31 @@ export default function Page() {
     }));
   }
 
+  function updateImageGenerationMode(
+    assetKey: string,
+    mode: ImageModelConfig["mode"],
+  ) {
+    setImageModelConfigs((current) => ({
+      ...current,
+      [assetKey]: {
+        ...(current[assetKey] ?? defaultImageModelConfig),
+        mode,
+        models: getDefaultImageModelsForMode(mode),
+      },
+    }));
+  }
+
   function toggleImageModel(assetKey: string, model: string) {
     setImageModelConfigs((current) => {
       const currentConfig = current[assetKey] ?? defaultImageModelConfig;
+      const availableModels = getImageModelOptionsForMode(currentConfig.mode).map(
+        (option) => option.value,
+      );
+
+      if (!availableModels.includes(model)) {
+        return current;
+      }
+
       const currentModels = currentConfig.models.length
         ? currentConfig.models
         : defaultImageModelConfig.models;
@@ -929,7 +1039,9 @@ export default function Page() {
         ...current,
         [assetKey]: {
           ...currentConfig,
-          models: nextModels.length ? nextModels : defaultImageModelConfig.models,
+          models: nextModels.length
+            ? nextModels
+            : getDefaultImageModelsForMode(currentConfig.mode),
         },
       };
     });
@@ -943,23 +1055,48 @@ export default function Page() {
   }
 
   function removeReferenceImage(assetKey: string, imageId: string) {
-    setReferenceImages((current) => ({
-      ...current,
-      [assetKey]: (current[assetKey] ?? []).filter((image) => image.id !== imageId),
-    }));
+    setReferenceImages((current) => {
+      const targetImage = (current[assetKey] ?? []).find((image) => image.id === imageId);
+
+      if (targetImage?.previewUrl) {
+        URL.revokeObjectURL(targetImage.previewUrl);
+      }
+
+      return {
+        ...current,
+        [assetKey]: (current[assetKey] ?? []).filter((image) => image.id !== imageId),
+      };
+    });
   }
 
-  function handleReferenceUpload(assetKey: string, files: FileList | null) {
+  function fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(new Error("Failed to read the reference image."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleReferenceUpload(assetKey: string, files: FileList | null) {
     if (!files?.length) {
       return;
     }
 
-    Array.from(files).forEach((file) => {
-      addReferenceImage(assetKey, {
+    const uploadedImages = await Promise.all(
+      Array.from(files).map(async (file) => ({
         id: `upload-${Date.now()}-${file.name}`,
         name: file.name,
-        source: "upload",
+        source: "upload" as const,
+        dataUrl: await fileToDataUrl(file),
         previewUrl: URL.createObjectURL(file),
+      })),
+    );
+
+    uploadedImages.forEach((image) => {
+      addReferenceImage(assetKey, {
+        ...image,
       });
     });
   }
@@ -1140,8 +1277,33 @@ Don't:
     updateAssetPromptDraft(assetKey, templateContent);
   }
 
-  function handlePromptTemplateSave(assetKey: string, fallbackPrompt: string) {
-    const promptText = assetPromptDrafts[assetKey] ?? fallbackPrompt;
+  function handleDescriptionPromptTemplateDrop(
+    event: DragEvent<HTMLTextAreaElement>,
+    assetKind: "character" | "scene" | "item",
+  ) {
+    event.preventDefault();
+    const templateContent = event.dataTransfer.getData("text/plain");
+
+    if (!templateContent) {
+      return;
+    }
+
+    setDescriptionPromptDrafts((current) => ({
+      ...current,
+      [assetKind]: templateContent,
+    }));
+  }
+
+  function handlePromptTemplateSave(
+    assetKey: string,
+    fallbackPrompt: string,
+    library: PromptLibraryKind = "image",
+    promptOverride?: string,
+  ) {
+    const promptText =
+      typeof promptOverride === "string"
+        ? promptOverride
+        : assetPromptDrafts[assetKey] ?? fallbackPrompt;
     const fileName = promptSaveDrafts[assetKey]?.fileName?.trim() ?? "";
 
     if (!promptText.trim() || !fileName) {
@@ -1160,6 +1322,7 @@ Don't:
           body: JSON.stringify({
             fileName,
             content: promptText,
+            library,
           }),
         });
 
@@ -1175,15 +1338,27 @@ Don't:
 
         const savedTemplate = data.template;
 
-        setPromptTemplates((current) => {
-          const next = current.filter(
-            (template) => template.fileName !== savedTemplate.fileName,
-          );
+        if (library === "description") {
+          setDescriptionPromptTemplates((current) => {
+            const next = current.filter(
+              (template) => template.fileName !== savedTemplate.fileName,
+            );
 
-          return [...next, savedTemplate].sort((a, b) =>
-            a.fileName.localeCompare(b.fileName),
-          );
-        });
+            return [...next, savedTemplate].sort((a, b) =>
+              a.fileName.localeCompare(b.fileName),
+            );
+          });
+        } else {
+          setPromptTemplates((current) => {
+            const next = current.filter(
+              (template) => template.fileName !== savedTemplate.fileName,
+            );
+
+            return [...next, savedTemplate].sort((a, b) =>
+              a.fileName.localeCompare(b.fileName),
+            );
+          });
+        }
         setPromptSaveStates((current) => ({
           ...current,
           [assetKey]: "saved",
@@ -1225,8 +1400,13 @@ Don't:
     }));
   }
 
-  function confirmPromptSave(assetKey: string, fallbackPrompt: string) {
-    handlePromptTemplateSave(assetKey, fallbackPrompt);
+  function confirmPromptSave(
+    assetKey: string,
+    fallbackPrompt: string,
+    library: PromptLibraryKind = "image",
+    promptOverride?: string,
+  ) {
+    handlePromptTemplateSave(assetKey, fallbackPrompt, library, promptOverride);
     setActivePromptSaveAssetKey("");
   }
 
@@ -1477,6 +1657,12 @@ Don't:
     setImageGenerationError("");
 
     try {
+      const currentReferenceImages = referenceImages[assetKey] ?? [];
+
+      if (modelConfig.mode === "image_to_image" && !currentReferenceImages.length) {
+        throw new Error("Please add at least one reference image for image-to-image.");
+      }
+
       const response = await fetch("/api/image-generation", {
         method: "POST",
         headers: {
@@ -1489,6 +1675,16 @@ Don't:
           size: modelConfig.size,
           aspectRatio: modelConfig.aspectRatio,
           outputFormat: modelConfig.outputFormat,
+          projectRootPath,
+          referenceImages:
+            modelConfig.mode === "image_to_image"
+              ? currentReferenceImages.map((image) => ({
+                  name: image.name,
+                  source: image.source,
+                  dataUrl: image.dataUrl,
+                  path: image.path,
+                }))
+              : [],
         }),
       });
 
@@ -1499,6 +1695,7 @@ Don't:
           imageUrl?: string;
           taskId?: string;
           error?: string;
+          diagnostics?: ImageGenerationDiagnostics;
           inferenceMs?: number;
           seed?: number;
         }>;
@@ -1520,6 +1717,7 @@ Don't:
           filename: `${title.trim() || "generated-image"}-${getImageModelLabel(result.model)}.png`,
           taskId: result.taskId,
           error: result.error,
+          diagnostics: result.diagnostics,
           seed: result.seed,
           inferenceMs: result.inferenceMs,
         })) ??
@@ -1853,7 +2051,7 @@ Don't:
                       <button
                         type="button"
                         className="prompt-delete-button"
-                        onClick={() => void handleDeletePromptTemplate(template.fileName)}
+                        onClick={() => void handleDeletePromptTemplate(template.fileName, "image")}
                       >
                         Delete
                       </button>
@@ -1861,6 +2059,54 @@ Don't:
                   ))
                 ) : (
                   <p className="project-asset-empty">No prompt templates yet.</p>
+                )}
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              className="project-tree-node prompt-tree-node"
+              onClick={() =>
+                setDescriptionPromptLibraryCollapsed((current) => !current)
+              }
+            >
+              <span>{descriptionPromptLibraryCollapsed ? "+" : "-"}</span>
+              <strong>description_generation_prompts</strong>
+              <em>{descriptionPromptTemplates.length}</em>
+            </button>
+
+            {!descriptionPromptLibraryCollapsed ? (
+              <div className="project-asset-list prompt-template-list">
+                {isLoadingPromptTemplates ? (
+                  <p className="project-asset-empty">Loading prompt library...</p>
+                ) : descriptionPromptTemplates.length ? (
+                  descriptionPromptTemplates.map((template) => (
+                    <div
+                      key={`description:${template.fileName}`}
+                      draggable
+                      className="prompt-template-item"
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData("text/plain", template.content);
+                        event.dataTransfer.effectAllowed = "copy";
+                      }}
+                    >
+                      <strong>{template.fileName}</strong>
+                      <button
+                        type="button"
+                        className="prompt-delete-button"
+                        onClick={() =>
+                          void handleDeletePromptTemplate(
+                            template.fileName,
+                            "description",
+                          )
+                        }
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="project-asset-empty">No description prompt templates yet.</p>
                 )}
               </div>
             ) : null}
@@ -2419,8 +2665,10 @@ Don't:
                             assetPromptDrafts[effectiveAssetKey] ?? defaultPromptText;
                           const modelConfig =
                             imageModelConfigs[effectiveAssetKey] ?? defaultImageModelConfig;
-                          const currentReferenceImages =
-                            referenceImages[effectiveAssetKey] ?? [];
+                            const currentReferenceImages =
+                              referenceImages[effectiveAssetKey] ?? [];
+                            const availableImageModelOptions =
+                              getImageModelOptionsForMode(modelConfig.mode);
                           const showModelSettings =
                             showImageModelSettingsKey === effectiveAssetKey;
                           const isImageToImageMode =
@@ -2438,6 +2686,8 @@ Don't:
                                 imageResult,
                               )
                             : createSaveTargetFromGeneratedImage(selectedAsset);
+                          const descriptionPromptSaveKey =
+                            `${effectiveAssetKey}:description-prompt`;
                           const descriptionSaveTarget: SaveTarget = {
                             panelKey: `${selectedAsset.kind}:${selectedAsset.id}:description`,
                             title: "Save this asset description",
@@ -2506,6 +2756,24 @@ Don't:
                                     <button
                                       type="button"
                                       className={
+                                        promptSaveState === "saved"
+                                          ? "secondary-button active"
+                                          : "secondary-button"
+                                      }
+                                      onClick={() =>
+                                        openPromptSave(
+                                          descriptionPromptSaveKey,
+                                          `${selectedAsset.kind}_description_prompt`,
+                                        )
+                                      }
+                                    >
+                                      {promptSaveStates[descriptionPromptSaveKey] === "saved"
+                                        ? "Prompt Saved"
+                                        : "Save Prompt"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={
                                         isGeneratingDescription
                                           ? "generate-button compact loading"
                                           : "generate-button compact"
@@ -2529,12 +2797,64 @@ Don't:
 
                                 {showDescriptionPrompt ? (
                                   <div className="system-prompt-wrap description-prompt-wrap">
+                                    {activePromptSaveAssetKey === descriptionPromptSaveKey ? (
+                                      <div className="prompt-save-inline">
+                                        <label className="save-field">
+                                          <span>Template file name</span>
+                                          <input
+                                            type="text"
+                                            className="workspace-input"
+                                            value={
+                                              promptSaveDrafts[descriptionPromptSaveKey]
+                                                ?.fileName ??
+                                              `${selectedAsset.kind}_description_prompt`
+                                            }
+                                            onChange={(event) =>
+                                              updatePromptSaveDraft(
+                                                descriptionPromptSaveKey,
+                                                event.target.value,
+                                              )
+                                            }
+                                          />
+                                        </label>
+                                        <div className="prompt-save-actions">
+                                          <button
+                                            type="button"
+                                            className="secondary-button"
+                                            onClick={() => setActivePromptSaveAssetKey("")}
+                                          >
+                                            Cancel
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="secondary-button save-confirm-button"
+                                            onClick={() =>
+                                              confirmPromptSave(
+                                                descriptionPromptSaveKey,
+                                                descriptionPrompt,
+                                                "description",
+                                                descriptionPrompt,
+                                              )
+                                            }
+                                          >
+                                            Confirm Save Template
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : null}
                                     <label className="system-prompt-label">
                                       {selectedAsset.kind} description system prompt
                                     </label>
                                     <textarea
                                       className="system-prompt-input"
                                       value={descriptionPrompt}
+                                      onDragOver={(event) => event.preventDefault()}
+                                      onDrop={(event) =>
+                                        handleDescriptionPromptTemplateDrop(
+                                          event,
+                                          selectedAsset.kind,
+                                        )
+                                      }
                                       onChange={(event) =>
                                         setDescriptionPromptDrafts((current) => ({
                                           ...current,
@@ -2625,7 +2945,7 @@ Don't:
                                       accept="image/*"
                                       multiple
                                       onChange={(event) =>
-                                        handleReferenceUpload(
+                                        void handleReferenceUpload(
                                           effectiveAssetKey,
                                           event.target.files,
                                         )
@@ -2773,15 +3093,18 @@ Don't:
                                         className="workspace-input"
                                         value={modelConfig.mode}
                                         onChange={(event) =>
-                                          updateImageModelConfig(
+                                          updateImageGenerationMode(
                                             effectiveAssetKey,
-                                            "mode",
                                             event.target.value as ImageModelConfig["mode"],
                                           )
                                         }
                                       >
                                         {imageGenerationModeOptions.map((option) => (
-                                          <option key={option.value} value={option.value}>
+                                          <option
+                                            key={option.value}
+                                            value={option.value}
+                                            disabled={option.disabled}
+                                          >
                                             {option.label}
                                           </option>
                                         ))}
@@ -2790,7 +3113,7 @@ Don't:
                                     <div className="save-field model-picker-field">
                                       <span>Models</span>
                                       <div className="model-checkbox-list">
-                                        {imageModelOptions.map((option) => (
+                                        {availableImageModelOptions.map((option) => (
                                           <label
                                             className="model-checkbox-item"
                                             key={option.value}
@@ -2872,7 +3195,7 @@ Don't:
                                     </label>
                                     <p className="model-settings-note">
                                       {isImageToImageMode
-                                        ? "Image-to-image reference upload is staged in the UI, but the API route is not connected yet."
+                                        ? "Image-to-image uses Gemini and Midjourney with the reference images above. Midjourney is async, so use Check Status if it is still processing."
                                         : "Text-to-image uses only the prompt text. Reference images are hidden for this mode."}
                                     </p>
                                   </div>
@@ -3025,6 +3348,9 @@ Don't:
                                       {imageResult?.status === "processing"
                                         ? `Task submitted. Task ID: ${imageResult.taskId ?? "n/a"}`
                                         : imageResult?.error ?? "Image generation is still waiting for an image URL."}
+                                      {imageResult?.diagnostics
+                                        ? ` ${formatImageDiagnostics(imageResult.diagnostics)}`
+                                        : ""}
                                     </p>
                                   )}
                                   {imageResults.length > 1 ? (
@@ -3047,6 +3373,11 @@ Don't:
                                                     ? `Processing: ${result.taskId ?? "task submitted"}`
                                                     : result.error ?? "Failed"}
                                               </span>
+                                              {result.diagnostics ? (
+                                                <span>
+                                                  {formatImageDiagnostics(result.diagnostics)}
+                                                </span>
+                                              ) : null}
                                             </div>
                                             {result.status === "completed" && result.url ? (
                                               <div className="workspace-audio-actions">

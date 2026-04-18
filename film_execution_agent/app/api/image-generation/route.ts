@@ -2,14 +2,21 @@ import { NextResponse } from "next/server";
 
 import {
   buildGptProtoGrokImagePayload,
+  buildGptProtoImageEditPayload,
   buildGptProtoImageGenerationPayload,
+  buildGptProtoMidjourneyImageToImagePayload,
   buildGptProtoMidjourneyImaginePayload,
   buildGptProtoViduImagePayload,
   extractImageGenerationResult,
   extractMidjourneyTaskId,
   extractPredictionId,
+  getGptProtoImageModelsForMode,
+  summarizeImageGenerationResponse,
+  type GptProtoImageMode,
   type GptProtoImageModelId,
+  type ImageGenerationResponseSummary,
 } from "@/lib/image-generation";
+import { readProjectFileAsDataUrl } from "@/lib/local-project-storage";
 import { getTaskProviderConfig } from "@/lib/task-provider-config";
 
 export const runtime = "nodejs";
@@ -22,6 +29,15 @@ type ImageGenerationRequest = {
   size?: string;
   aspectRatio?: string;
   outputFormat?: string;
+  projectRootPath?: string;
+  referenceImages?: ReferenceImageInput[];
+};
+
+type ReferenceImageInput = {
+  name?: string;
+  dataUrl?: string;
+  path?: string;
+  source?: "upload" | "project";
 };
 
 type ImageGenerationRouteResult = {
@@ -30,16 +46,17 @@ type ImageGenerationRouteResult = {
   imageUrl?: string;
   taskId?: string;
   error?: string;
+  diagnostics?: ImageGenerationDiagnostics;
   inferenceMs?: number;
   seed?: number;
 };
 
-const supportedImageModels = new Set<GptProtoImageModelId>([
-  "gemini-3.1-flash-image-preview",
-  "grok-imagine-image",
-  "midjourney",
-  "viduq2",
-]);
+type ImageGenerationDiagnostics = {
+  provider?: string;
+  endpoint?: string;
+  httpStatus?: number;
+  responseShape?: ImageGenerationResponseSummary;
+};
 
 const midjourneyPollDelayMs = 3000;
 const midjourneyPollAttempts = 8;
@@ -54,7 +71,11 @@ function normalizeModelIds(
   models: string[] | undefined,
   model: string | undefined,
   fallbackModel: string,
+  mode: GptProtoImageMode,
 ): GptProtoImageModelId[] {
+  const supportedImageModels = new Set(
+    getGptProtoImageModelsForMode(mode).map((item) => item.id),
+  );
   const rawModels = models?.length ? models : [model || fallbackModel];
   const normalized = rawModels
     .map((item) => item.trim())
@@ -64,6 +85,34 @@ function normalizeModelIds(
     );
 
   return normalized.length ? Array.from(new Set(normalized)) : ["gemini-3.1-flash-image-preview"];
+}
+
+async function normalizeReferenceImages({
+  referenceImages,
+  projectRootPath,
+}: {
+  referenceImages: ReferenceImageInput[] | undefined;
+  projectRootPath: string | undefined;
+}) {
+  const images = await Promise.all(
+    (referenceImages ?? []).map(async (image) => {
+      const dataUrl = image.dataUrl?.trim();
+
+      if (dataUrl) {
+        return dataUrl;
+      }
+
+      const projectPath = image.path?.trim();
+
+      if (projectPath) {
+        return readProjectFileAsDataUrl(projectRootPath?.trim() ?? "", projectPath);
+      }
+
+      return "";
+    }),
+  );
+
+  return images.filter(Boolean);
 }
 
 async function parseJsonResponse(response: Response) {
@@ -96,6 +145,27 @@ function getApiError(data: unknown, fallback: string) {
   return fallback;
 }
 
+function createImageGenerationError(
+  message: string,
+  diagnostics: ImageGenerationDiagnostics,
+) {
+  const error = new Error(message);
+
+  Object.assign(error, { diagnostics });
+
+  return error;
+}
+
+function getImageGenerationErrorDiagnostics(
+  error: unknown,
+): ImageGenerationDiagnostics | undefined {
+  if (error && typeof error === "object" && "diagnostics" in error) {
+    return (error as { diagnostics?: ImageGenerationDiagnostics }).diagnostics;
+  }
+
+  return undefined;
+}
+
 async function runGeminiImageGeneration({
   apiKey,
   baseUrl,
@@ -113,7 +183,8 @@ async function runGeminiImageGeneration({
   aspectRatio: string;
   outputFormat: string;
 }): Promise<ImageGenerationRouteResult> {
-  const response = await fetch(`${baseUrl}/google/${model}/text-to-image`, {
+  const endpoint = `${baseUrl}/google/${model}/text-to-image`;
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -131,10 +202,158 @@ async function runGeminiImageGeneration({
   const data = await parseJsonResponse(response);
 
   if (!response.ok) {
-    throw new Error(getApiError(data, "Gemini image generation failed."));
+    throw createImageGenerationError(getApiError(data, "Gemini image generation failed."), {
+      provider: "gemini",
+      endpoint,
+      httpStatus: response.status,
+      responseShape: summarizeImageGenerationResponse(data),
+    });
   }
 
-  const parsed = extractImageGenerationResult(data);
+  let parsed;
+
+  try {
+    parsed = extractImageGenerationResult(data);
+  } catch (error) {
+    throw createImageGenerationError(
+      error instanceof Error ? error.message : "Gemini image generation failed.",
+      {
+        provider: "gemini",
+        endpoint,
+        httpStatus: response.status,
+        responseShape: summarizeImageGenerationResponse(data),
+      },
+    );
+  }
+
+  return {
+    model,
+    status: "completed",
+    imageUrl: parsed.imageUrl,
+    inferenceMs: parsed.inferenceMs,
+    seed: parsed.seed,
+  };
+}
+
+async function runGeminiImageEdit({
+  apiKey,
+  baseUrl,
+  model,
+  prompt,
+  images,
+  size,
+  aspectRatio,
+  outputFormat,
+}: {
+  apiKey: string;
+  baseUrl: string;
+  model: GptProtoImageModelId;
+  prompt: string;
+  images: string[];
+  size: string;
+  aspectRatio: string;
+  outputFormat: string;
+}): Promise<ImageGenerationRouteResult> {
+  const endpoint = `${baseUrl}/google/${model}/image-edit`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(
+      buildGptProtoImageEditPayload({
+        prompt,
+        images,
+        size,
+        aspectRatio,
+        outputFormat,
+      }),
+    ),
+  });
+  const data = await parseJsonResponse(response);
+
+  if (!response.ok) {
+    throw createImageGenerationError(getApiError(data, "Gemini image edit failed."), {
+      provider: "gemini",
+      endpoint,
+      httpStatus: response.status,
+      responseShape: summarizeImageGenerationResponse(data),
+    });
+  }
+
+  let parsed;
+
+  try {
+    parsed = extractImageGenerationResult(data);
+  } catch (error) {
+    try {
+      const predictionId = extractPredictionId(data);
+
+      for (let attempt = 0; attempt < predictionPollAttempts; attempt += 1) {
+        if (attempt > 0) {
+          await sleep(predictionPollDelayMs);
+        }
+
+        const resultResponse = await fetch(`${baseUrl}/predictions/${predictionId}/result`, {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+        });
+        const resultData = await parseJsonResponse(resultResponse);
+
+        if (!resultResponse.ok) {
+          throw createImageGenerationError(
+            getApiError(resultData, "Gemini image edit prediction fetch failed."),
+            {
+              provider: "gemini",
+              endpoint: `${baseUrl}/predictions/${predictionId}/result`,
+              httpStatus: resultResponse.status,
+              responseShape: summarizeImageGenerationResponse(resultData),
+            },
+          );
+        }
+
+        try {
+          const predictionResult = extractImageGenerationResult(resultData);
+
+          return {
+            model,
+            status: "completed",
+            taskId: predictionId,
+            imageUrl: predictionResult.imageUrl,
+            inferenceMs: predictionResult.inferenceMs,
+            seed: predictionResult.seed,
+          };
+        } catch {
+          // Keep polling while Gemini image-edit has no final image URL yet.
+        }
+      }
+
+      return {
+        model,
+        status: "processing",
+        taskId: predictionId,
+      };
+    } catch (predictionError) {
+      if (getImageGenerationErrorDiagnostics(predictionError)) {
+        throw predictionError;
+      }
+
+      // Fall through to the original parse diagnostics below.
+    }
+
+    throw createImageGenerationError(
+      error instanceof Error ? error.message : "Gemini image edit failed.",
+      {
+        provider: "gemini",
+        endpoint,
+        httpStatus: response.status,
+        responseShape: summarizeImageGenerationResponse(data),
+      },
+    );
+  }
 
   return {
     model,
@@ -154,7 +373,8 @@ async function runGrokImageGeneration({
   prompt: string;
   aspectRatio: string;
 }): Promise<ImageGenerationRouteResult> {
-  const response = await fetch("https://gptproto.com/v1/images/generations", {
+  const endpoint = "https://gptproto.com/v1/images/generations";
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       Authorization: apiKey,
@@ -170,13 +390,34 @@ async function runGrokImageGeneration({
   const data = await parseJsonResponse(response);
 
   if (!response.ok) {
-    throw new Error(getApiError(data, "Grok image generation failed."));
+    throw createImageGenerationError(getApiError(data, "Grok image generation failed."), {
+      provider: "grok",
+      endpoint,
+      httpStatus: response.status,
+      responseShape: summarizeImageGenerationResponse(data),
+    });
+  }
+
+  let parsed;
+
+  try {
+    parsed = extractImageGenerationResult(data);
+  } catch (error) {
+    throw createImageGenerationError(
+      error instanceof Error ? error.message : "Grok image generation failed.",
+      {
+        provider: "grok",
+        endpoint,
+        httpStatus: response.status,
+        responseShape: summarizeImageGenerationResponse(data),
+      },
+    );
   }
 
   return {
     model: "grok-imagine-image",
     status: "completed",
-    imageUrl: extractImageGenerationResult(data).imageUrl,
+    imageUrl: parsed.imageUrl,
   };
 }
 
@@ -187,13 +428,41 @@ async function runMidjourneyImageGeneration({
   apiKey: string;
   prompt: string;
 }): Promise<ImageGenerationRouteResult> {
+  return runMidjourneySubmitAndPoll({
+    apiKey,
+    payload: buildGptProtoMidjourneyImaginePayload({ prompt }),
+  });
+}
+
+async function runMidjourneyImageEdit({
+  apiKey,
+  prompt,
+  images,
+}: {
+  apiKey: string;
+  prompt: string;
+  images: string[];
+}): Promise<ImageGenerationRouteResult> {
+  return runMidjourneySubmitAndPoll({
+    apiKey,
+    payload: buildGptProtoMidjourneyImageToImagePayload({ prompt, images }),
+  });
+}
+
+async function runMidjourneySubmitAndPoll({
+  apiKey,
+  payload,
+}: {
+  apiKey: string;
+  payload: ReturnType<typeof buildGptProtoMidjourneyImaginePayload>;
+}): Promise<ImageGenerationRouteResult> {
   const submitResponse = await fetch("https://gptproto.com/mj/submit/imagine", {
     method: "POST",
     headers: {
       Authorization: apiKey,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(buildGptProtoMidjourneyImaginePayload({ prompt })),
+    body: JSON.stringify(payload),
   });
   const submitData = await parseJsonResponse(submitResponse);
 
@@ -325,21 +594,14 @@ export async function POST(request: Request) {
     size,
     aspectRatio,
     outputFormat,
+    projectRootPath,
+    referenceImages,
   }: ImageGenerationRequest = await request.json();
   const trimmedPrompt = prompt?.trim();
+  const generationMode: GptProtoImageMode = mode ?? "text_to_image";
 
   if (!trimmedPrompt) {
     return NextResponse.json({ error: "Image prompt is required." }, { status: 400 });
-  }
-
-  if (mode === "image_to_image") {
-    return NextResponse.json(
-      {
-        error:
-          "Image-to-image is not connected yet. Please use Text to Image for now.",
-      },
-      { status: 400 },
-    );
   }
 
   let providerConfig;
@@ -355,10 +617,51 @@ export async function POST(request: Request) {
 
   try {
     const baseUrl = providerConfig.baseUrl.replace(/\/$/, "");
-    const selectedModels = normalizeModelIds(models, model, providerConfig.model);
+    const selectedModels = normalizeModelIds(
+      models,
+      model,
+      providerConfig.model,
+      generationMode,
+    );
+    const normalizedReferenceImages =
+      generationMode === "image_to_image"
+        ? await normalizeReferenceImages({
+            referenceImages,
+            projectRootPath,
+          })
+        : [];
+
+    if (generationMode === "image_to_image" && !normalizedReferenceImages.length) {
+      return NextResponse.json(
+        { error: "At least one reference image is required for image-to-image." },
+        { status: 400 },
+      );
+    }
+
     const results = await Promise.all(
       selectedModels.map(async (selectedModel) => {
         try {
+          if (generationMode === "image_to_image") {
+            if (selectedModel === "midjourney") {
+              return await runMidjourneyImageEdit({
+                apiKey: providerConfig.apiKey,
+                prompt: trimmedPrompt,
+                images: normalizedReferenceImages,
+              });
+            }
+
+            return await runGeminiImageEdit({
+              apiKey: providerConfig.apiKey,
+              baseUrl,
+              model: selectedModel,
+              prompt: trimmedPrompt,
+              images: normalizedReferenceImages,
+              size: size?.trim() || "1K",
+              aspectRatio: aspectRatio?.trim() || "1:1",
+              outputFormat: outputFormat?.trim() || "png",
+            });
+          }
+
           if (selectedModel === "grok-imagine-image") {
             return await runGrokImageGeneration({
               apiKey: providerConfig.apiKey,
@@ -400,6 +703,7 @@ export async function POST(request: Request) {
               error instanceof Error
                 ? error.message
                 : "Image generation failed.",
+            diagnostics: getImageGenerationErrorDiagnostics(error),
           } satisfies ImageGenerationRouteResult;
         }
       }),

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { DEFAULT_IMAGE_PROMPTS_FOLDER } from "@/lib/prompt-library-config";
+import {
+  getPromptLibraryFolder,
+  type PromptLibraryKind,
+} from "@/lib/prompt-library-config";
 import {
   deletePromptTemplate,
   listPromptTemplates,
@@ -12,11 +15,20 @@ export const runtime = "nodejs";
 type PromptLibraryRequest = {
   fileName?: string;
   content?: string;
+  library?: PromptLibraryKind;
 };
 
-export async function GET() {
+function getLibraryFromRequest(request: Request): PromptLibraryKind {
+  const url = new URL(request.url);
+  const library = url.searchParams.get("library");
+
+  return library === "description" ? "description" : "image";
+}
+
+export async function GET(request: Request) {
   try {
-    const templates = await listPromptTemplates(DEFAULT_IMAGE_PROMPTS_FOLDER);
+    const library = getLibraryFromRequest(request);
+    const templates = await listPromptTemplates(getPromptLibraryFolder(library));
     return NextResponse.json({ templates });
   } catch (error) {
     const message =
@@ -27,7 +39,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { fileName, content }: PromptLibraryRequest = await request.json();
+  const { fileName, content, library = "image" }: PromptLibraryRequest =
+    await request.json();
 
   try {
     if (!fileName?.trim()) {
@@ -39,7 +52,7 @@ export async function POST(request: Request) {
     }
 
     const template = await savePromptTemplate(
-      DEFAULT_IMAGE_PROMPTS_FOLDER,
+      getPromptLibraryFolder(library),
       fileName,
       content,
     );
@@ -54,14 +67,14 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const { fileName }: PromptLibraryRequest = await request.json();
+  const { fileName, library = "image" }: PromptLibraryRequest = await request.json();
 
   try {
     if (!fileName?.trim()) {
       throw new Error("Template name is required.");
     }
 
-    await deletePromptTemplate(DEFAULT_IMAGE_PROMPTS_FOLDER, fileName);
+    await deletePromptTemplate(getPromptLibraryFolder(library), fileName);
 
     return NextResponse.json({ deleted: true, fileName });
   } catch (error) {

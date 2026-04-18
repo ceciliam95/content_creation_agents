@@ -78,9 +78,13 @@ export async function POST(request: Request) {
     );
   }
 
-  if (model !== "midjourney" && model !== "viduq2") {
+  if (
+    model !== "midjourney" &&
+    model !== "viduq2" &&
+    model !== "gemini-3.1-flash-image-preview"
+  ) {
     return NextResponse.json(
-      { error: "Status check is only available for Midjourney and Vidu Q2." },
+      { error: "Status check is only available for Gemini image edit, Midjourney, and Vidu Q2." },
       { status: 400 },
     );
   }

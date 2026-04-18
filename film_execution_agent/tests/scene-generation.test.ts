@@ -20,15 +20,20 @@ import {
   buildPromptTemplatePath,
   sanitizePromptTemplateName,
 } from "../lib/prompt-library";
+import { buildProjectFilePath } from "../lib/local-project-storage";
 import {
   buildGptProtoGrokImagePayload,
   buildImageGenerationPayload,
   buildGptProtoImageGenerationPayload,
+  buildGptProtoImageEditPayload,
+  buildGptProtoMidjourneyImageToImagePayload,
   buildGptProtoMidjourneyImaginePayload,
   buildGptProtoViduImagePayload,
   extractImageGenerationResult,
   extractMidjourneyTaskId,
   extractPredictionId,
+  getGptProtoImageModelsForMode,
+  summarizeImageGenerationResponse,
 } from "../lib/image-generation";
 import {
   buildAssetDescriptionPayload,
@@ -290,6 +295,15 @@ test("buildPromptTemplatePath stays inside the prompt library folder", () => {
   assert.equal(output.fileName, "default item prompt.txt");
 });
 
+test("buildProjectFilePath resolves a project file inside the selected root", () => {
+  const output = buildProjectFilePath(
+    "C:\\workspace\\visual_design",
+    "assets/characters/eleanor.png",
+  );
+
+  assert.match(output.filePath, /assets[\\/]characters[\\/]eleanor\.png$/i);
+});
+
 test("buildImageGenerationPayload uses the SiliconFlow Qwen image defaults", () => {
   const payload = buildImageGenerationPayload({
     model: "Qwen/Qwen-Image-Edit-2509",
@@ -352,6 +366,32 @@ test("buildGptProtoImageGenerationPayload builds Gemini text-to-image request bo
   });
 });
 
+test("buildGptProtoImageEditPayload builds Gemini image-to-image request body with multiple references", () => {
+  const payload = buildGptProtoImageEditPayload({
+    prompt: "Keep the same character identity and change the outfit.",
+    images: [
+      "data:image/png;base64,first-reference",
+      "data:image/jpeg;base64,second-reference",
+    ],
+    size: "1K",
+    aspectRatio: "1:1",
+    outputFormat: "png",
+  });
+
+  assert.deepEqual(payload, {
+    prompt: "Keep the same character identity and change the outfit.",
+    images: [
+      "data:image/png;base64,first-reference",
+      "data:image/jpeg;base64,second-reference",
+    ],
+    size: "1K",
+    aspect_ratio: "1:1",
+    output_format: "png",
+    enable_sync_mode: true,
+    enable_base64_output: false,
+  });
+});
+
 test("extractImageGenerationResult supports GPT Proto image URL responses", () => {
   const output = extractImageGenerationResult({
     data: {
@@ -390,6 +430,32 @@ test("extractImageGenerationResult ignores non-image task fetch URLs", () => {
   );
 });
 
+test("summarizeImageGenerationResponse reports response shape without large base64 payloads", () => {
+  const summary = summarizeImageGenerationResponse({
+    id: "prediction-123",
+    data: {
+      images: [
+        {
+          b64_json: `data:image/png;base64,${"a".repeat(160)}`,
+        },
+      ],
+    },
+    nested: {
+      url: "https://example.com/generated.png",
+    },
+  });
+
+  assert.deepEqual(summary.topLevelKeys, ["data", "id", "nested"]);
+  assert.equal(summary.hasImageUrlCandidate, true);
+  assert.equal(summary.hasBase64Candidate, true);
+  assert.equal(summary.idCandidate, "prediction-123");
+  assert.ok(
+    summary.sampleImageUrlCandidate?.startsWith("https://example.com/generated.png"),
+  );
+  assert.equal(summary.sampleBase64Candidate?.includes("a".repeat(120)), false);
+  assert.match(summary.sampleBase64Candidate ?? "", /\[truncated/);
+});
+
 test("buildGptProtoGrokImagePayload builds OpenAI-compatible image body", () => {
   const payload = buildGptProtoGrokImagePayload({
     prompt: "Generate a manor house.",
@@ -402,6 +468,51 @@ test("buildGptProtoGrokImagePayload builds OpenAI-compatible image body", () => 
     n: 1,
     aspect_ratio: "16:9",
     response_format: "url",
+  });
+});
+
+test("getGptProtoImageModelsForMode returns separate text and image edit registries", () => {
+  assert.deepEqual(
+    getGptProtoImageModelsForMode("text_to_image").map((model) => model.id),
+    [
+      "gemini-3.1-flash-image-preview",
+      "grok-imagine-image",
+      "midjourney",
+      "viduq2",
+    ],
+  );
+  assert.deepEqual(
+    getGptProtoImageModelsForMode("image_to_image").map((model) => model.id),
+    ["gemini-3.1-flash-image-preview", "midjourney"],
+  );
+});
+
+test("buildGptProtoMidjourneyImageToImagePayload sends reference images through base64Array", () => {
+  const payload = buildGptProtoMidjourneyImageToImagePayload({
+    prompt: "Create a refined outfit variation --iw 1.5",
+    images: [
+      "data:image/jpeg;base64,formal-front",
+      "data:image/png;base64,lucia-dress",
+    ],
+  });
+
+  assert.deepEqual(payload, {
+    botType: "MID_JOURNEY",
+    prompt: "Create a refined outfit variation --iw 1.5",
+    base64Array: [
+      "data:image/jpeg;base64,formal-front",
+      "data:image/png;base64,lucia-dress",
+    ],
+    accountFilter: {
+      channelId: "",
+      instanceId: "",
+      modes: [],
+      remark: "",
+      remix: true,
+      remixAutoConsidered: true,
+    },
+    notifyHook: "",
+    state: "",
   });
 });
 
@@ -468,6 +579,18 @@ test("extractImageGenerationResult reads Midjourney imageUrl when complete", () 
 
   assert.deepEqual(output, {
     imageUrl: "https://cdn.discordapp.com/attachments/generated.png",
+  });
+});
+
+test("extractImageGenerationResult trims a Midjourney storage URL out of mixed prompt text", () => {
+  const output = extractImageGenerationResult({
+    imageUrl:
+      "mj/1/2026/04/18/1776508236115234410_8484.png https://midjourney.datas.systems/storage/mj/1/2026/04/18/1776508237969882698_1251.png 生成一张图片",
+  });
+
+  assert.deepEqual(output, {
+    imageUrl:
+      "https://midjourney.datas.systems/storage/mj/1/2026/04/18/1776508237969882698_1251.png",
   });
 });
 

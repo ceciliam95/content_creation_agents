@@ -1,0 +1,18 @@
+cinematic mafia romance scene, dark luxury interior, warm amber lighting, low-key lighting, high contrast shadows, rich brown and gold tones, elegant vintage atmosphere, italian mafia aesthetic,
+
+dominant male character in tailored suit, relaxed but powerful posture, intense gaze, controlled expression, subtle arrogance,
+
+female character in elegant black dress, soft skin lighting, slightly vulnerable but confident, sensual presence,
+
+close proximity between characters, emotional tension, unspoken desire, power imbalance, almost touching but not,
+
+shot on 50mm lens, shallow depth of field, soft focus background, film grain, ultra realistic, cinematic composition,
+
+baroque interior, leather furniture, whiskey glass / wine glass, chandelier, classical paintings, moody lighting,
+
+low-key lighting
+warm amber / tungsten lighting
+high contrast shadows
+soft light on skin, hard shadow in environment
+
+--ar 9:16 --style raw --v 6 --q 2
