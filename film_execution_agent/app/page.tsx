@@ -16,6 +16,10 @@ import {
   createDialogueAudioFilename,
 } from "@/lib/dialogue-tts";
 import { DEFAULT_PROJECT_ROOT_FOLDER } from "@/lib/local-project-storage-config";
+import {
+  isVideoProjectFile,
+  type VideoClipSelection,
+} from "@/lib/video-editing-shared";
 
 const sampleScript = `5 a.m. The city is not fully awake yet. She stands outside a corner convenience store holding a hot coffee, watching the bus stop across the street. The wind lifts her hair as a bus slowly approaches in the distance.`;
 const sampleStoryboardAssetInput = `SCENE 1
@@ -46,7 +50,7 @@ SCENE 2
 画面内容：Duke低头看向手中的旧钥匙，走廊尽头有一盏昏黄台灯。
 台词（VO）："We do not have much time left."`;
 
-type TabKey = "scenes" | "video" | "assets";
+type TabKey = "scenes" | "video" | "assets" | "editing";
 type AssetKind = "dialogue" | "character" | "scene" | "item";
 type AssetListEntry =
   | { kind: "dialogue"; id: string; title: string; subtitle: string; status: "reuse" | "ready"; asset: DialogueAsset }
@@ -108,6 +112,17 @@ type ProjectFileNode = {
   relativePath: string;
   kind: "directory" | "file";
   children?: ProjectFileNode[];
+};
+type RoughCutResult = {
+  status: "ready";
+  message: string;
+  clipCount: number;
+  fileName: string;
+  fileId: string;
+  previewUrl: string;
+  downloadUrl: string;
+  defaultFolder: string;
+  aspectRatio: "16:9" | "9:16";
 };
 type PromptTemplate = {
   fileName: string;
@@ -314,6 +329,11 @@ export default function Page() {
   const [activeSavePanelKey, setActiveSavePanelKey] = useState("");
   const [saveError, setSaveError] = useState("");
   const [saveSuccessMessage, setSaveSuccessMessage] = useState("");
+  const [selectedVideoClips, setSelectedVideoClips] = useState<VideoClipSelection[]>([]);
+  const [roughCutAspectRatio, setRoughCutAspectRatio] = useState<"16:9" | "9:16">("16:9");
+  const [isCombiningVideos, setIsCombiningVideos] = useState(false);
+  const [videoEditingError, setVideoEditingError] = useState("");
+  const [roughCutResult, setRoughCutResult] = useState<RoughCutResult | null>(null);
 
   useEffect(() => {
     dialogueAudioResultsRef.current = dialogueAudioResults;
@@ -611,6 +631,20 @@ export default function Page() {
       source: {
         type: "remote-url",
         url: imageResult.url,
+      },
+    };
+  }
+
+  function createSaveTargetFromRoughCut(result: RoughCutResult): SaveTarget {
+    return {
+      panelKey: `video-editing:rough-cut:${result.fileId}`,
+      title: "Save this rough cut",
+      defaultName: result.fileName.replace(/\.mp4$/i, ""),
+      defaultPath: `${projectRootPath}\\rough_cuts`,
+      extension: "mp4",
+      source: {
+        type: "remote-url",
+        url: result.downloadUrl,
       },
     };
   }
@@ -946,9 +980,20 @@ export default function Page() {
               child.kind === "directory" ? (
                 renderProjectTree(child)
               ) : (
+                (() => {
+                  const isVideoFile = isVideoProjectFile(child.name);
+                  const isSelectedVideo = selectedVideoClips.some(
+                    (clip) => clip.relativePath === child.relativePath,
+                  );
+
+                  return (
                 <div
                   key={`${child.kind}:${child.relativePath}`}
-                  className="project-asset-item file"
+                  className={
+                    isSelectedVideo
+                      ? "project-asset-item file video-selected"
+                      : "project-asset-item file"
+                  }
                   draggable
                   onDragStart={(event) => {
                     event.dataTransfer.setData(
@@ -963,15 +1008,117 @@ export default function Page() {
                     event.dataTransfer.effectAllowed = "copy";
                   }}
                 >
-                  <strong>{child.name}</strong>
+                  <div className="project-file-row">
+                    {isVideoFile ? (
+                      <label
+                        className="project-video-checkbox"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelectedVideo}
+                          onChange={() => toggleVideoClip(child)}
+                        />
+                        <span>Select</span>
+                      </label>
+                    ) : null}
+                    <strong>{child.name}</strong>
+                  </div>
                   <span>{child.relativePath}</span>
                 </div>
+                  );
+                })()
               ),
             )}
           </div>
         ) : null}
       </div>
     );
+  }
+
+  function toggleVideoClip(file: ProjectFileNode) {
+    if (file.kind !== "file" || !isVideoProjectFile(file.name)) {
+      return;
+    }
+
+    setSelectedVideoClips((current) =>
+      current.some((clip) => clip.relativePath === file.relativePath)
+        ? current.filter((clip) => clip.relativePath !== file.relativePath)
+        : [...current, { name: file.name, relativePath: file.relativePath }],
+    );
+    setRoughCutResult(null);
+    setVideoEditingError("");
+  }
+
+  function removeVideoClip(relativePath: string) {
+    setSelectedVideoClips((current) =>
+      current.filter((clip) => clip.relativePath !== relativePath),
+    );
+    setRoughCutResult(null);
+  }
+
+  function moveVideoClip(index: number, direction: -1 | 1) {
+    setSelectedVideoClips((current) => {
+      const nextIndex = index + direction;
+
+      if (nextIndex < 0 || nextIndex >= current.length) {
+        return current;
+      }
+
+      const next = [...current];
+      const [clip] = next.splice(index, 1);
+      next.splice(nextIndex, 0, clip);
+      return next;
+    });
+    setRoughCutResult(null);
+  }
+
+  async function handleCombineVideos() {
+    if (!selectedVideoClips.length || isCombiningVideos) {
+      return;
+    }
+
+    setIsCombiningVideos(true);
+    setVideoEditingError("");
+    setRoughCutResult(null);
+
+    try {
+      const response = await fetch("/api/video-editing/rough-cut", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          rootPath: projectRootPath,
+          clips: selectedVideoClips,
+          aspectRatio: roughCutAspectRatio,
+        }),
+      });
+      const data = (await response.json()) as RoughCutResult & { error?: string };
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error ?? "Failed to prepare the rough cut.");
+      }
+
+      setRoughCutResult({
+        status: data.status,
+        message: data.message,
+        clipCount: data.clipCount,
+        fileName: data.fileName,
+        fileId: data.fileId,
+        previewUrl: data.previewUrl,
+        downloadUrl: data.downloadUrl,
+        defaultFolder: data.defaultFolder,
+        aspectRatio: data.aspectRatio,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to prepare the rough cut.";
+
+      setVideoEditingError(message);
+    } finally {
+      setIsCombiningVideos(false);
+    }
   }
 
   function toggleReuse(assetKey: string) {
@@ -2145,6 +2292,13 @@ Don't:
             onClick={() => setActiveTab("video")}
           >
             Video Generation
+          </button>
+          <button
+            type="button"
+            className={activeTab === "editing" ? "tab active" : "tab"}
+            onClick={() => setActiveTab("editing")}
+          >
+            Video Editing
           </button>
         </nav>
 
@@ -3470,6 +3624,198 @@ Don't:
               )}
             </section>
           </div>
+        ) : activeTab === "editing" ? (
+          <section className="video-editing-layout">
+            {(() => {
+              const roughCutSaveTarget = roughCutResult
+                ? createSaveTargetFromRoughCut(roughCutResult)
+                : null;
+
+              return (
+            <section className="panel video-editing-panel">
+              <div className="panel-heading">
+                <div>
+                  <span className="panel-label">Video Editing</span>
+                  <h2>Rough cut builder</h2>
+                  <p>
+                    Select local video files from the project library, arrange the order, then prepare a rough cut.
+                    FFmpeg stitching is staged for the next backend pass.
+                  </p>
+                </div>
+                <span className="status-chip ready">
+                  {selectedVideoClips.length} clips selected
+                </span>
+              </div>
+
+              <div className="video-editing-grid">
+                <div className="rough-cut-list">
+                  <div className="workspace-preview-header">
+                    <div>
+                      <span className="panel-label">Selected Clips</span>
+                      <h4>Rough cut order</h4>
+                    </div>
+                  </div>
+
+                  {selectedVideoClips.length ? (
+                    <div className="clip-order-list">
+                      {selectedVideoClips.map((clip, index) => (
+                        <div className="clip-order-item" key={clip.relativePath}>
+                          <span className="clip-order-index">
+                            {String(index + 1).padStart(2, "0")}
+                          </span>
+                          <div>
+                            <strong>{clip.name}</strong>
+                            <span>{clip.relativePath}</span>
+                          </div>
+                          <div className="clip-order-actions">
+                            <button
+                              type="button"
+                              className="secondary-button compact-icon"
+                              onClick={() => moveVideoClip(index, -1)}
+                              disabled={index === 0}
+                            >
+                              Up
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button compact-icon"
+                              onClick={() => moveVideoClip(index, 1)}
+                              disabled={index === selectedVideoClips.length - 1}
+                            >
+                              Down
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button danger-button compact-icon"
+                              onClick={() => removeVideoClip(clip.relativePath)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="video-empty-state">
+                      <span className="panel-label">No Clips Yet</span>
+                      <p>
+                        Use the checkboxes beside local video files in the project sidebar.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rough-cut-output">
+                  <div className="workspace-preview-header">
+                    <div>
+                      <span className="panel-label">Output</span>
+                      <h4>Combined video placeholder</h4>
+                    </div>
+                  </div>
+                  <div className="preview-frame rough-cut-preview">
+                    {roughCutResult ? (
+                      <div>
+                        <strong>{roughCutResult.fileName}</strong>
+                        <p>{roughCutResult.message}</p>
+                        <span>
+                          {roughCutResult.clipCount} clips · {roughCutResult.aspectRatio}
+                        </span>
+                        <video
+                          className="rough-cut-video"
+                          controls
+                          src={roughCutResult.previewUrl}
+                        >
+                          Your browser does not support the video element.
+                        </video>
+                      </div>
+                    ) : (
+                      <div>
+                        <strong>Rough cut will appear here</strong>
+                        <p>Backend FFmpeg stitching is not connected yet.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rough-cut-settings">
+                    <label className="save-field">
+                      <span>Output Ratio</span>
+                      <select
+                        className="workspace-input"
+                        value={roughCutAspectRatio}
+                        onChange={(event) =>
+                          setRoughCutAspectRatio(
+                            event.target.value === "9:16" ? "9:16" : "16:9",
+                          )
+                        }
+                      >
+                        <option value="16:9">16:9 · 1280x720</option>
+                        <option value="9:16">9:16 · 720x1280</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="asset-actions">
+                    <button
+                      type="button"
+                      className={
+                        isCombiningVideos
+                          ? "generate-button compact loading"
+                          : "generate-button compact"
+                      }
+                      onClick={() => void handleCombineVideos()}
+                      disabled={!selectedVideoClips.length || isCombiningVideos}
+                    >
+                      {isCombiningVideos ? "Preparing..." : "Combine Videos"}
+                    </button>
+                    <a
+                      className={
+                        roughCutResult
+                          ? "secondary-button image-download-link"
+                          : "secondary-button disabled-link"
+                      }
+                      href={roughCutResult?.downloadUrl ?? "#"}
+                      download={roughCutResult?.fileName}
+                      aria-disabled={!roughCutResult}
+                      onClick={(event) => {
+                        if (!roughCutResult) {
+                          event.preventDefault();
+                        }
+                      }}
+                    >
+                      Download
+                    </a>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={!roughCutSaveTarget}
+                      onClick={() => {
+                        if (roughCutSaveTarget) {
+                          openSavePanel(roughCutSaveTarget);
+                        }
+                      }}
+                    >
+                      Save
+                    </button>
+                  </div>
+
+                  {roughCutSaveTarget &&
+                  activeSavePanelKey === roughCutSaveTarget.panelKey
+                    ? renderSavePanel(roughCutSaveTarget)
+                    : null}
+
+                  {videoEditingError ? (
+                    <p className="asset-inline-error">{videoEditingError}</p>
+                  ) : null}
+                  <p className="model-settings-note">
+                    Clips are normalized to 720p, 24fps, H.264/AAC before stitching.
+                    Save defaults to {projectRootPath}\rough_cuts and lets you rename the file.
+                  </p>
+                </div>
+              </div>
+            </section>
+              );
+            })()}
+          </section>
         ) : (
           <section className="panel placeholder-panel">
             <span className="panel-label">Project-linked preview</span>

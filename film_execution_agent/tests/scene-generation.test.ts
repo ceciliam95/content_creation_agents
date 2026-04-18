@@ -39,6 +39,11 @@ import {
   buildAssetDescriptionPayload,
   extractAssetDescriptionText,
 } from "../lib/asset-description-generation";
+import {
+  createRoughCutDraftFilename,
+  getRoughCutDimensions,
+  isVideoProjectFile,
+} from "../lib/video-editing-shared";
 
 test("buildSceneGenerationPayload includes a system message when provided", () => {
   const payload = buildSceneGenerationPayload({
@@ -627,4 +632,29 @@ test("extractAssetDescriptionText returns assistant text", () => {
   });
 
   assert.equal(output, "A focused production-ready character description.");
+});
+
+test("isVideoProjectFile recognizes project video assets", () => {
+  assert.equal(isVideoProjectFile("clip_01.mp4"), true);
+  assert.equal(isVideoProjectFile("scene-final.MOV"), true);
+  assert.equal(isVideoProjectFile("character.png"), false);
+});
+
+test("createRoughCutDraftFilename creates a stable mp4 filename", () => {
+  const filename = createRoughCutDraftFilename(
+    new Date("2026-04-18T03:04:05.000Z"),
+  );
+
+  assert.equal(filename, "rough_cut_20260418_030405.mp4");
+});
+
+test("getRoughCutDimensions maps output ratios to 720p canvases", () => {
+  assert.deepEqual(getRoughCutDimensions("16:9"), {
+    width: 1280,
+    height: 720,
+  });
+  assert.deepEqual(getRoughCutDimensions("9:16"), {
+    width: 720,
+    height: 1280,
+  });
 });
