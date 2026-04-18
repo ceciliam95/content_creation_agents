@@ -21,8 +21,14 @@ import {
   sanitizePromptTemplateName,
 } from "../lib/prompt-library";
 import {
+  buildGptProtoGrokImagePayload,
   buildImageGenerationPayload,
+  buildGptProtoImageGenerationPayload,
+  buildGptProtoMidjourneyImaginePayload,
+  buildGptProtoViduImagePayload,
   extractImageGenerationResult,
+  extractMidjourneyTaskId,
+  extractPredictionId,
 } from "../lib/image-generation";
 import {
   buildAssetDescriptionPayload,
@@ -131,15 +137,15 @@ test("getTaskProviderConfig resolves dialogue_tts env vars", () => {
 
 test("getTaskProviderConfig resolves image_generation env vars", () => {
   const config = getTaskProviderConfig("image_generation", {
-    IMAGE_GENERATION_API_KEY: "image-secret",
-    IMAGE_GENERATION_MODEL: "Qwen/Qwen-Image-Edit-2509",
-    IMAGE_GENERATION_BASE_URL: "https://api.siliconflow.cn/v1",
+    GPTPROTO_API_KEY: "gptproto-secret",
+    IMAGE_GENERATION_MODEL: "gemini-3.1-flash-image-preview",
+    IMAGE_GENERATION_BASE_URL: "https://gptproto.com/api/v3",
   });
 
   assert.deepEqual(config, {
-    apiKey: "image-secret",
-    model: "Qwen/Qwen-Image-Edit-2509",
-    baseUrl: "https://api.siliconflow.cn/v1",
+    apiKey: "gptproto-secret",
+    model: "gemini-3.1-flash-image-preview",
+    baseUrl: "https://gptproto.com/api/v3",
   });
 });
 
@@ -325,6 +331,143 @@ test("extractImageGenerationResult returns the first generated image metadata", 
     imageUrl: "https://example.com/generated.png",
     inferenceMs: 123,
     seed: 987,
+  });
+});
+
+test("buildGptProtoImageGenerationPayload builds Gemini text-to-image request body", () => {
+  const payload = buildGptProtoImageGenerationPayload({
+    prompt: "Generate a candle icon.",
+    size: "1K",
+    aspectRatio: "1:1",
+    outputFormat: "png",
+  });
+
+  assert.deepEqual(payload, {
+    prompt: "Generate a candle icon.",
+    size: "1K",
+    aspect_ratio: "1:1",
+    output_format: "png",
+    enable_sync_mode: true,
+    enable_base64_output: false,
+  });
+});
+
+test("extractImageGenerationResult supports GPT Proto image URL responses", () => {
+  const output = extractImageGenerationResult({
+    data: {
+      image_url: "https://example.com/gptproto.png",
+    },
+  });
+
+  assert.deepEqual(output, {
+    imageUrl: "https://example.com/gptproto.png",
+  });
+});
+
+test("extractImageGenerationResult finds deeply nested GPT Proto image URLs", () => {
+  const output = extractImageGenerationResult({
+    data: {
+      result: {
+        output: ["https://example.com/nested-output.png"],
+      },
+    },
+  });
+
+  assert.deepEqual(output, {
+    imageUrl: "https://example.com/nested-output.png",
+  });
+});
+
+test("extractImageGenerationResult ignores non-image task fetch URLs", () => {
+  assert.throws(
+    () =>
+      extractImageGenerationResult({
+        data: {
+          progressUrl: "https://example.com/mj/task/task-123/fetch",
+        },
+      }),
+    /did not include an image URL/,
+  );
+});
+
+test("buildGptProtoGrokImagePayload builds OpenAI-compatible image body", () => {
+  const payload = buildGptProtoGrokImagePayload({
+    prompt: "Generate a manor house.",
+    aspectRatio: "16:9",
+  });
+
+  assert.deepEqual(payload, {
+    model: "grok-imagine-image",
+    prompt: "Generate a manor house.",
+    n: 1,
+    aspect_ratio: "16:9",
+    response_format: "url",
+  });
+});
+
+test("buildGptProtoViduImagePayload builds Vidu Q2 text-to-image body", () => {
+  const payload = buildGptProtoViduImagePayload({
+    prompt: "Generate a sushi chef.",
+    aspectRatio: "1:1",
+  });
+
+  assert.deepEqual(payload, {
+    prompt: "Generate a sushi chef.",
+    aspect_ratio: "1:1",
+    resolution: "1080p",
+    seed: 1,
+  });
+});
+
+test("buildGptProtoMidjourneyImaginePayload builds submit imagine body", () => {
+  const payload = buildGptProtoMidjourneyImaginePayload({
+    prompt: "Cat",
+  });
+
+  assert.deepEqual(payload, {
+    botType: "MID_JOURNEY",
+    prompt: "Cat",
+    base64Array: [],
+    accountFilter: {
+      channelId: "",
+      instanceId: "",
+      modes: [],
+      remark: "",
+      remix: true,
+      remixAutoConsidered: true,
+    },
+    notifyHook: "",
+    state: "",
+  });
+});
+
+test("extractMidjourneyTaskId supports common submit response fields", () => {
+  assert.equal(extractMidjourneyTaskId({ result: "task-123" }), "task-123");
+  assert.equal(extractMidjourneyTaskId({ data: { id: "task-456" } }), "task-456");
+});
+
+test("extractPredictionId supports GPT Proto prediction response fields", () => {
+  assert.equal(extractPredictionId({ data: { id: "prediction-123" } }), "prediction-123");
+  assert.equal(
+    extractPredictionId({
+      data: {
+        urls: {
+          get: "https://gptproto.com/api/v3/predictions/prediction-456/result",
+        },
+      },
+    }),
+    "prediction-456",
+  );
+});
+
+test("extractImageGenerationResult reads Midjourney imageUrl when complete", () => {
+  const output = extractImageGenerationResult({
+    status: "SUCCESS",
+    imageUrl: "https://cdn.discordapp.com/attachments/generated.png",
+  });
+
+  assert.deepEqual(output, {
+    imageUrl: "https://cdn.discordapp.com/attachments/generated.png",
   });
 });
 

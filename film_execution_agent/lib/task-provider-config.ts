@@ -39,7 +39,7 @@ const TASK_ENV_KEYS: Record<
     baseUrl: "DIALOGUE_TTS_BASE_URL",
   },
   image_generation: {
-    apiKey: "IMAGE_GENERATION_API_KEY",
+    apiKey: "GPTPROTO_API_KEY",
     model: "IMAGE_GENERATION_MODEL",
     baseUrl: "IMAGE_GENERATION_BASE_URL",
   },

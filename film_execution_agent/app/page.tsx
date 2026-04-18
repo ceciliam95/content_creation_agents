@@ -56,8 +56,12 @@ type DialogueAudioResult = {
   filename: string;
 };
 type GeneratedImageResult = {
+  model: string;
+  status: "completed" | "processing" | "failed";
   url: string;
   filename: string;
+  taskId?: string;
+  error?: string;
   seed?: number;
   inferenceMs?: number;
 };
@@ -99,6 +103,20 @@ type PromptSaveDraft = {
   fileName: string;
 };
 type PromptSaveState = "idle" | "saved";
+type ImageModelConfig = {
+  mode: "text_to_image" | "image_to_image";
+  models: string[];
+  size: string;
+  aspectRatio: string;
+  outputFormat: string;
+};
+type ReferenceImage = {
+  id: string;
+  name: string;
+  source: "upload" | "project";
+  previewUrl?: string;
+  path?: string;
+};
 
 const emptyAssetAnalysis: AssetAnalysisResult = {
   dialogues: [],
@@ -106,6 +124,51 @@ const emptyAssetAnalysis: AssetAnalysisResult = {
   scenes: [],
   items: [],
 };
+
+const defaultImageModelConfig: ImageModelConfig = {
+  mode: "text_to_image",
+  models: ["gemini-3.1-flash-image-preview"],
+  size: "1K",
+  aspectRatio: "1:1",
+  outputFormat: "png",
+};
+
+const imageModelOptions = [
+  {
+    label: "Gemini 3.1 Flash Image Preview",
+    value: "gemini-3.1-flash-image-preview",
+  },
+  {
+    label: "Grok Imagine Image",
+    value: "grok-imagine-image",
+  },
+  {
+    label: "Midjourney",
+    value: "midjourney",
+  },
+  {
+    label: "Vidu Q2",
+    value: "viduq2",
+  },
+];
+
+const imageSizeOptions = ["1K", "2K"];
+const imageAspectRatioOptions = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+const imageOutputFormatOptions = ["png", "jpg", "webp"];
+const imageGenerationModeOptions = [
+  {
+    label: "Text to Image",
+    value: "text_to_image",
+  },
+  {
+    label: "Image to Image",
+    value: "image_to_image",
+  },
+] as const;
+
+function getImageModelLabel(model: string) {
+  return imageModelOptions.find((option) => option.value === model)?.label ?? model;
+}
 
 export default function Page() {
   const [activeTab, setActiveTab] = useState<TabKey>("scenes");
@@ -132,6 +195,9 @@ export default function Page() {
   const [selectedAssetKey, setSelectedAssetKey] = useState("");
   const [reusedAssetKeys, setReusedAssetKeys] = useState<string[]>([]);
   const [assetPromptDrafts, setAssetPromptDrafts] = useState<Record<string, string>>({});
+  const [imageModelConfigs, setImageModelConfigs] = useState<Record<string, ImageModelConfig>>({});
+  const [showImageModelSettingsKey, setShowImageModelSettingsKey] = useState("");
+  const [referenceImages, setReferenceImages] = useState<Record<string, ReferenceImage[]>>({});
   const [assetDescriptionDrafts, setAssetDescriptionDrafts] = useState<Record<string, string>>({});
   const [descriptionPromptDrafts, setDescriptionPromptDrafts] = useState<Record<"character" | "scene" | "item", string>>({
     character:
@@ -151,7 +217,7 @@ export default function Page() {
     Record<string, DialogueAudioResult>
   >({});
   const [imageGenerationResults, setImageGenerationResults] = useState<
-    Record<string, GeneratedImageResult>
+    Record<string, GeneratedImageResult[]>
   >({});
   const [showVoiceTaggingPrompt, setShowVoiceTaggingPrompt] = useState(false);
   const [voiceTaggingSystemPrompt, setVoiceTaggingSystemPrompt] = useState(() =>
@@ -163,6 +229,7 @@ export default function Page() {
   const [ttsError, setTtsError] = useState("");
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [imageGenerationError, setImageGenerationError] = useState("");
+  const [checkingImageStatusKeys, setCheckingImageStatusKeys] = useState<string[]>([]);
   const dialogueAudioResultsRef = useRef<Record<string, DialogueAudioResult>>({});
   const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(false);
   const [projectTreeOpen, setProjectTreeOpen] = useState(true);
@@ -316,6 +383,8 @@ export default function Page() {
       setManualAssets([]);
       setReusedAssetKeys([]);
       setAssetPromptDrafts({});
+      setImageModelConfigs({});
+      setReferenceImages({});
       setAssetDescriptionDrafts({});
       setDialogueDrafts({});
       setDialogueVoiceIds({});
@@ -436,7 +505,9 @@ export default function Page() {
   }
 
   function createSaveTargetFromGeneratedImage(asset: AssetListEntry): SaveTarget {
-    const imageResult = imageGenerationResults[`${asset.kind}:${asset.id}`];
+    const imageResult = imageGenerationResults[`${asset.kind}:${asset.id}`]?.find(
+      (result) => result.status === "completed" && result.url,
+    );
     const relativeBasePath =
       asset.kind === "character"
         ? "assets\\characters"
@@ -453,6 +524,30 @@ export default function Page() {
       source: {
         type: "remote-url",
         url: imageResult?.url ?? "",
+      },
+    };
+  }
+
+  function createSaveTargetFromGeneratedImageResult(
+    asset: AssetListEntry,
+    imageResult: GeneratedImageResult,
+  ): SaveTarget {
+    const relativeBasePath =
+      asset.kind === "character"
+        ? "assets\\characters"
+        : asset.kind === "scene"
+          ? "assets\\scenes"
+          : "assets\\items";
+
+    return {
+      panelKey: `${asset.kind}:${asset.id}:image:${imageResult.model}`,
+      title: `Save ${getImageModelLabel(imageResult.model)} image`,
+      defaultName: `${asset.title} ${getImageModelLabel(imageResult.model)} image`,
+      defaultPath: `${projectRootPath}\\${relativeBasePath}`,
+      extension: "png",
+      source: {
+        type: "remote-url",
+        url: imageResult.url,
       },
     };
   }
@@ -806,6 +901,109 @@ export default function Page() {
     }));
   }
 
+  function updateImageModelConfig(
+    assetKey: string,
+    field: keyof ImageModelConfig,
+    value: ImageModelConfig[keyof ImageModelConfig],
+  ) {
+    setImageModelConfigs((current) => ({
+      ...current,
+      [assetKey]: {
+        ...(current[assetKey] ?? defaultImageModelConfig),
+        [field]: value,
+      },
+    }));
+  }
+
+  function toggleImageModel(assetKey: string, model: string) {
+    setImageModelConfigs((current) => {
+      const currentConfig = current[assetKey] ?? defaultImageModelConfig;
+      const currentModels = currentConfig.models.length
+        ? currentConfig.models
+        : defaultImageModelConfig.models;
+      const nextModels = currentModels.includes(model)
+        ? currentModels.filter((item) => item !== model)
+        : [...currentModels, model];
+
+      return {
+        ...current,
+        [assetKey]: {
+          ...currentConfig,
+          models: nextModels.length ? nextModels : defaultImageModelConfig.models,
+        },
+      };
+    });
+  }
+
+  function addReferenceImage(assetKey: string, image: ReferenceImage) {
+    setReferenceImages((current) => ({
+      ...current,
+      [assetKey]: [...(current[assetKey] ?? []), image],
+    }));
+  }
+
+  function removeReferenceImage(assetKey: string, imageId: string) {
+    setReferenceImages((current) => ({
+      ...current,
+      [assetKey]: (current[assetKey] ?? []).filter((image) => image.id !== imageId),
+    }));
+  }
+
+  function handleReferenceUpload(assetKey: string, files: FileList | null) {
+    if (!files?.length) {
+      return;
+    }
+
+    Array.from(files).forEach((file) => {
+      addReferenceImage(assetKey, {
+        id: `upload-${Date.now()}-${file.name}`,
+        name: file.name,
+        source: "upload",
+        previewUrl: URL.createObjectURL(file),
+      });
+    });
+  }
+
+  function handleReferenceDrop(
+    event: DragEvent<HTMLDivElement>,
+    assetKey: string,
+  ) {
+    event.preventDefault();
+    const projectPayload = event.dataTransfer.getData("application/json");
+
+    if (projectPayload) {
+      try {
+        const parsed = JSON.parse(projectPayload) as {
+          name?: string;
+          relativePath?: string;
+        };
+
+        if (parsed.name || parsed.relativePath) {
+          addReferenceImage(assetKey, {
+            id: `project-${Date.now()}-${parsed.relativePath ?? parsed.name}`,
+            name: parsed.name ?? parsed.relativePath ?? "Project asset",
+            source: "project",
+            path: parsed.relativePath,
+          });
+          return;
+        }
+      } catch {
+        // Fall through to plain text handling.
+      }
+    }
+
+    const plainText = event.dataTransfer.getData("text/plain");
+
+    if (plainText) {
+      addReferenceImage(assetKey, {
+        id: `project-${Date.now()}-${plainText}`,
+        name: plainText.split(/[\\/]/).pop() || plainText,
+        source: "project",
+        path: plainText,
+      });
+    }
+  }
+
   function updateAssetDescriptionDraft(assetKey: string, value: string) {
     setAssetDescriptionDrafts((current) => ({
       ...current,
@@ -1109,6 +1307,16 @@ Don't:
       delete nextDrafts[removedKey];
       return nextDrafts;
     });
+    setImageModelConfigs((currentConfigs) => {
+      const nextConfigs = { ...currentConfigs };
+      delete nextConfigs[removedKey];
+      return nextConfigs;
+    });
+    setReferenceImages((currentImages) => {
+      const nextImages = { ...currentImages };
+      delete nextImages[removedKey];
+      return nextImages;
+    });
     setDialogueDrafts((currentDrafts) => {
       const nextDrafts = { ...currentDrafts };
       delete nextDrafts[removedKey];
@@ -1138,6 +1346,8 @@ Don't:
     setManualAssets([]);
     setReusedAssetKeys([]);
     setAssetPromptDrafts({});
+    setImageModelConfigs({});
+    setReferenceImages({});
     setAssetDescriptionDrafts({});
     setDialogueDrafts({});
     setDialogueVoiceIds({});
@@ -1253,7 +1463,12 @@ Don't:
     }
   }
 
-  async function handleImageGeneration(assetKey: string, prompt: string, title: string) {
+  async function handleImageGeneration(
+    assetKey: string,
+    prompt: string,
+    title: string,
+    modelConfig: ImageModelConfig,
+  ) {
     if (!prompt.trim() || isGeneratingImage) {
       return;
     }
@@ -1267,30 +1482,67 @@ Don't:
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({
+          prompt,
+          mode: modelConfig.mode,
+          models: modelConfig.models,
+          size: modelConfig.size,
+          aspectRatio: modelConfig.aspectRatio,
+          outputFormat: modelConfig.outputFormat,
+        }),
       });
 
       const data = (await response.json()) as {
+        results?: Array<{
+          model: string;
+          status: "completed" | "processing" | "failed";
+          imageUrl?: string;
+          taskId?: string;
+          error?: string;
+          inferenceMs?: number;
+          seed?: number;
+        }>;
         imageUrl?: string;
         inferenceMs?: number;
         seed?: number;
         error?: string;
       };
 
-      if (!response.ok || !data.imageUrl) {
+      if (!response.ok) {
         throw new Error(data.error ?? "Image generation failed.");
       }
 
-      const imageUrl = data.imageUrl;
+      const results =
+        data.results?.map((result) => ({
+          model: result.model,
+          status: result.status,
+          url: result.imageUrl ?? "",
+          filename: `${title.trim() || "generated-image"}-${getImageModelLabel(result.model)}.png`,
+          taskId: result.taskId,
+          error: result.error,
+          seed: result.seed,
+          inferenceMs: result.inferenceMs,
+        })) ??
+        (data.imageUrl
+          ? [
+              {
+                model: modelConfig.models[0] ?? defaultImageModelConfig.models[0],
+                status: "completed" as const,
+                url: data.imageUrl,
+                filename: `${title.trim() || "generated-image"}.png`,
+                seed: data.seed,
+                inferenceMs: data.inferenceMs,
+              },
+            ]
+          : []);
+
+      if (!results.length) {
+        throw new Error(data.error ?? "Image generation failed.");
+      }
 
       setImageGenerationResults((current) => ({
         ...current,
-        [assetKey]: {
-          url: imageUrl,
-          filename: `${title.trim() || "generated-image"}.png`,
-          seed: data.seed,
-          inferenceMs: data.inferenceMs,
-        },
+        [assetKey]: results,
       }));
     } catch (error) {
       const message =
@@ -1299,6 +1551,89 @@ Don't:
       setImageGenerationError(message);
     } finally {
       setIsGeneratingImage(false);
+    }
+  }
+
+  async function handleImageStatusCheck(
+    assetKey: string,
+    result: GeneratedImageResult,
+    title: string,
+  ) {
+    if (!result.taskId) {
+      return;
+    }
+
+    const statusKey = `${assetKey}:${result.model}`;
+
+    if (checkingImageStatusKeys.includes(statusKey)) {
+      return;
+    }
+
+    setCheckingImageStatusKeys((current) => [...current, statusKey]);
+    setImageGenerationError("");
+
+    try {
+      const response = await fetch("/api/image-generation/status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: result.model,
+          taskId: result.taskId,
+        }),
+      });
+      const data = (await response.json()) as {
+        model?: string;
+        status?: "completed" | "processing" | "failed";
+        imageUrl?: string;
+        taskId?: string;
+        error?: string;
+        inferenceMs?: number;
+        seed?: number;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Image status check failed.");
+      }
+
+      setImageGenerationResults((current) => ({
+        ...current,
+        [assetKey]: (current[assetKey] ?? []).map((item) =>
+          item.model === result.model
+            ? {
+                ...item,
+                status: data.status ?? item.status,
+                url: data.imageUrl ?? item.url,
+                filename: `${title.trim() || "generated-image"}-${getImageModelLabel(result.model)}.png`,
+                taskId: data.taskId ?? item.taskId,
+                error: data.error,
+                seed: data.seed,
+                inferenceMs: data.inferenceMs,
+              }
+            : item,
+        ),
+      }));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Image status check failed.";
+
+      setImageGenerationResults((current) => ({
+        ...current,
+        [assetKey]: (current[assetKey] ?? []).map((item) =>
+          item.model === result.model
+            ? {
+                ...item,
+                status: "failed",
+                error: message,
+              }
+            : item,
+        ),
+      }));
+    } finally {
+      setCheckingImageStatusKeys((current) =>
+        current.filter((item) => item !== statusKey),
+      );
     }
   }
 
@@ -2082,13 +2417,27 @@ Don't:
                           const defaultPromptText = buildPrototypePrompt(selectedAsset);
                           const promptText =
                             assetPromptDrafts[effectiveAssetKey] ?? defaultPromptText;
+                          const modelConfig =
+                            imageModelConfigs[effectiveAssetKey] ?? defaultImageModelConfig;
+                          const currentReferenceImages =
+                            referenceImages[effectiveAssetKey] ?? [];
+                          const showModelSettings =
+                            showImageModelSettingsKey === effectiveAssetKey;
+                          const isImageToImageMode =
+                            modelConfig.mode === "image_to_image";
                           const descriptionText =
                             assetDescriptionDrafts[effectiveAssetKey] ?? "";
                           const promptSaveState =
                             promptSaveStates[effectiveAssetKey] ?? "idle";
-                          const imageResult = imageGenerationResults[effectiveAssetKey];
-                          const imageSaveTarget =
-                            createSaveTargetFromGeneratedImage(selectedAsset);
+                          const imageResults =
+                            imageGenerationResults[effectiveAssetKey] ?? [];
+                          const imageResult = imageResults[0];
+                          const imageSaveTarget = imageResult
+                            ? createSaveTargetFromGeneratedImageResult(
+                                selectedAsset,
+                                imageResult,
+                              )
+                            : createSaveTargetFromGeneratedImage(selectedAsset);
                           const descriptionSaveTarget: SaveTarget = {
                             panelKey: `${selectedAsset.kind}:${selectedAsset.id}:description`,
                             title: "Save this asset description",
@@ -2130,80 +2479,6 @@ Don't:
                                     ? "Reused"
                                     : "Ready to Generate"}
                                 </span>
-                              </div>
-
-                              <div className="workspace-preview-card">
-                                <div className="workspace-preview-header">
-                                  <span className="panel-label">Prompt editor</span>
-                                  <button
-                                    type="button"
-                                    className="secondary-button"
-                                    onClick={() =>
-                                      openPromptSave(
-                                        effectiveAssetKey,
-                                        defaultPromptFileName.replace(/\.txt$/i, ""),
-                                      )
-                                    }
-                                  >
-                                    {promptSaveState === "saved" ? "Prompt Saved" : "Save Prompt"}
-                                  </button>
-                                </div>
-                                {activePromptSaveAssetKey === effectiveAssetKey ? (
-                                  <div className="prompt-save-inline">
-                                    <label className="save-field">
-                                      <span>Template file name</span>
-                                      <input
-                                        type="text"
-                                        className="workspace-input"
-                                        value={
-                                          promptSaveDrafts[effectiveAssetKey]?.fileName ??
-                                          defaultPromptFileName.replace(/\.txt$/i, "")
-                                        }
-                                        onChange={(event) =>
-                                          updatePromptSaveDraft(
-                                            effectiveAssetKey,
-                                            event.target.value,
-                                          )
-                                        }
-                                      />
-                                    </label>
-                                    <div className="prompt-save-actions">
-                                      <button
-                                        type="button"
-                                        className="secondary-button"
-                                        onClick={() => setActivePromptSaveAssetKey("")}
-                                      >
-                                        Cancel
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="secondary-button save-confirm-button"
-                                        onClick={() =>
-                                          confirmPromptSave(
-                                            effectiveAssetKey,
-                                            defaultPromptText,
-                                          )
-                                        }
-                                      >
-                                        Confirm Save Template
-                                      </button>
-                                    </div>
-                                  </div>
-                                ) : null}
-                                <textarea
-                                  className="dialogue-text-block workspace-text prompt-editor"
-                                  value={promptText}
-                                  onDragOver={(event) => event.preventDefault()}
-                                  onDrop={(event) =>
-                                    handlePromptTemplateDrop(event, effectiveAssetKey)
-                                  }
-                                  onChange={(event) =>
-                                    updateAssetPromptDraft(
-                                      effectiveAssetKey,
-                                      event.target.value,
-                                    )
-                                  }
-                                />
                               </div>
 
                               <div className="workspace-description-card">
@@ -2327,6 +2602,283 @@ Don't:
                                   : null}
                               </div>
 
+                              {isImageToImageMode ? (
+                              <div className="reference-images-card">
+                                <div className="workspace-preview-header">
+                                  <div>
+                                    <span className="panel-label">Reference Images</span>
+                                    <h4>Image-to-image visual inputs</h4>
+                                  </div>
+                                </div>
+                                <div
+                                  className="reference-dropzone"
+                                  onDragOver={(event) => event.preventDefault()}
+                                  onDrop={(event) =>
+                                    handleReferenceDrop(event, effectiveAssetKey)
+                                  }
+                                >
+                                  <p>Drop project assets here, or upload local reference images.</p>
+                                  <label className="secondary-button reference-upload-button">
+                                    Upload image
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      multiple
+                                      onChange={(event) =>
+                                        handleReferenceUpload(
+                                          effectiveAssetKey,
+                                          event.target.files,
+                                        )
+                                      }
+                                    />
+                                  </label>
+                                </div>
+                                {currentReferenceImages.length ? (
+                                  <div className="reference-image-list">
+                                    {currentReferenceImages.map((image) => (
+                                      <div className="reference-image-chip" key={image.id}>
+                                        {image.previewUrl ? (
+                                          <img src={image.previewUrl} alt={image.name} />
+                                        ) : (
+                                          <span className="reference-file-icon">File</span>
+                                        )}
+                                        <div>
+                                          <strong>{image.name}</strong>
+                                          <span>
+                                            {image.source === "upload"
+                                              ? "Uploaded reference"
+                                              : image.path ?? "Project asset"}
+                                          </span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className="reference-remove-button"
+                                          onMouseDown={(event) => event.stopPropagation()}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            removeReferenceImage(
+                                              effectiveAssetKey,
+                                              image.id,
+                                            );
+                                          }}
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                              ) : null}
+
+                              <div className="workspace-preview-card">
+                                <div className="workspace-preview-header">
+                                  <span className="panel-label">Prompt editor</span>
+                                  <button
+                                    type="button"
+                                    className="secondary-button"
+                                    onClick={() =>
+                                      openPromptSave(
+                                        effectiveAssetKey,
+                                        defaultPromptFileName.replace(/\.txt$/i, ""),
+                                      )
+                                    }
+                                  >
+                                    {promptSaveState === "saved" ? "Prompt Saved" : "Save Prompt"}
+                                  </button>
+                                </div>
+                                {activePromptSaveAssetKey === effectiveAssetKey ? (
+                                  <div className="prompt-save-inline">
+                                    <label className="save-field">
+                                      <span>Template file name</span>
+                                      <input
+                                        type="text"
+                                        className="workspace-input"
+                                        value={
+                                          promptSaveDrafts[effectiveAssetKey]?.fileName ??
+                                          defaultPromptFileName.replace(/\.txt$/i, "")
+                                        }
+                                        onChange={(event) =>
+                                          updatePromptSaveDraft(
+                                            effectiveAssetKey,
+                                            event.target.value,
+                                          )
+                                        }
+                                      />
+                                    </label>
+                                    <div className="prompt-save-actions">
+                                      <button
+                                        type="button"
+                                        className="secondary-button"
+                                        onClick={() => setActivePromptSaveAssetKey("")}
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="secondary-button save-confirm-button"
+                                        onClick={() =>
+                                          confirmPromptSave(
+                                            effectiveAssetKey,
+                                            defaultPromptText,
+                                          )
+                                        }
+                                      >
+                                        Confirm Save Template
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : null}
+                                <textarea
+                                  className="dialogue-text-block workspace-text prompt-editor"
+                                  value={promptText}
+                                  onDragOver={(event) => event.preventDefault()}
+                                  onDrop={(event) =>
+                                    handlePromptTemplateDrop(event, effectiveAssetKey)
+                                  }
+                                  onChange={(event) =>
+                                    updateAssetPromptDraft(
+                                      effectiveAssetKey,
+                                      event.target.value,
+                                    )
+                                  }
+                                />
+                                <div className="prompt-editor-footer">
+                                  <span>
+                                    Models: {modelConfig.models.map(getImageModelLabel).join(", ")}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className={
+                                      showModelSettings
+                                        ? "secondary-button active"
+                                        : "secondary-button"
+                                    }
+                                    onClick={() =>
+                                      setShowImageModelSettingsKey((current) =>
+                                        current === effectiveAssetKey
+                                          ? ""
+                                          : effectiveAssetKey,
+                                      )
+                                    }
+                                  >
+                                    Model Settings
+                                  </button>
+                                </div>
+                                {showModelSettings ? (
+                                  <div className="model-settings-panel">
+                                    <label className="save-field">
+                                      <span>Generation Mode</span>
+                                      <select
+                                        className="workspace-input"
+                                        value={modelConfig.mode}
+                                        onChange={(event) =>
+                                          updateImageModelConfig(
+                                            effectiveAssetKey,
+                                            "mode",
+                                            event.target.value as ImageModelConfig["mode"],
+                                          )
+                                        }
+                                      >
+                                        {imageGenerationModeOptions.map((option) => (
+                                          <option key={option.value} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <div className="save-field model-picker-field">
+                                      <span>Models</span>
+                                      <div className="model-checkbox-list">
+                                        {imageModelOptions.map((option) => (
+                                          <label
+                                            className="model-checkbox-item"
+                                            key={option.value}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={modelConfig.models.includes(option.value)}
+                                              onChange={() =>
+                                                toggleImageModel(
+                                                  effectiveAssetKey,
+                                                  option.value,
+                                                )
+                                              }
+                                            />
+                                            <span>{option.label}</span>
+                                          </label>
+                                        ))}
+                                      </div>
+                                    </div>
+                                    <label className="save-field">
+                                      <span>Size</span>
+                                      <select
+                                        className="workspace-input"
+                                        value={modelConfig.size}
+                                        onChange={(event) =>
+                                          updateImageModelConfig(
+                                            effectiveAssetKey,
+                                            "size",
+                                            event.target.value,
+                                          )
+                                        }
+                                      >
+                                        {imageSizeOptions.map((option) => (
+                                          <option key={option} value={option}>
+                                            {option}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <label className="save-field">
+                                      <span>Aspect Ratio</span>
+                                      <select
+                                        className="workspace-input"
+                                        value={modelConfig.aspectRatio}
+                                        onChange={(event) =>
+                                          updateImageModelConfig(
+                                            effectiveAssetKey,
+                                            "aspectRatio",
+                                            event.target.value,
+                                          )
+                                        }
+                                      >
+                                        {imageAspectRatioOptions.map((option) => (
+                                          <option key={option} value={option}>
+                                            {option}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <label className="save-field">
+                                      <span>Output Format</span>
+                                      <select
+                                        className="workspace-input"
+                                        value={modelConfig.outputFormat}
+                                        onChange={(event) =>
+                                          updateImageModelConfig(
+                                            effectiveAssetKey,
+                                            "outputFormat",
+                                            event.target.value,
+                                          )
+                                        }
+                                      >
+                                        {imageOutputFormatOptions.map((option) => (
+                                          <option key={option} value={option}>
+                                            {option.toUpperCase()}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <p className="model-settings-note">
+                                      {isImageToImageMode
+                                        ? "Image-to-image reference upload is staged in the UI, but the API route is not connected yet."
+                                        : "Text-to-image uses only the prompt text. Reference images are hidden for this mode."}
+                                    </p>
+                                  </div>
+                                ) : null}
+                              </div>
+
                               <div className="asset-actions">
                                 <button
                                   type="button"
@@ -2366,6 +2918,7 @@ Don't:
                                       effectiveAssetKey,
                                       promptText,
                                       selectedAsset.title,
+                                      modelConfig,
                                     )
                                   }
                                   disabled={isGeneratingImage}
@@ -2396,13 +2949,14 @@ Don't:
                                 <p className="asset-inline-error">{imageGenerationError}</p>
                               ) : null}
 
-                              {imageResult ? (
+                              {imageResults.length ? (
                                 <div className="workspace-image-card">
                                   <div className="workspace-preview-header">
                                     <div>
-                                      <span className="panel-label">Latest Image</span>
-                                      <h4>Generated image preview</h4>
+                                      <span className="panel-label">Latest Images</span>
+                                      <h4>Generated image previews</h4>
                                     </div>
+                                    {imageResult?.status === "completed" && imageResult.url ? (
                                     <div className="workspace-audio-actions">
                                       <a
                                         className="secondary-button image-download-link"
@@ -2421,7 +2975,33 @@ Don't:
                                         Save
                                       </button>
                                     </div>
+                                    ) : imageResult?.status === "processing" && imageResult.taskId ? (
+                                      <div className="workspace-audio-actions">
+                                        <button
+                                          type="button"
+                                          className="secondary-button"
+                                          disabled={checkingImageStatusKeys.includes(
+                                            `${effectiveAssetKey}:${imageResult.model}`,
+                                          )}
+                                          onClick={() =>
+                                            handleImageStatusCheck(
+                                              effectiveAssetKey,
+                                              imageResult,
+                                              selectedAsset.title,
+                                            )
+                                          }
+                                        >
+                                          {checkingImageStatusKeys.includes(
+                                            `${effectiveAssetKey}:${imageResult.model}`,
+                                          )
+                                            ? "Checking..."
+                                            : "Check Status"}
+                                        </button>
+                                      </div>
+                                    ) : null}
                                   </div>
+                                  {imageResult?.status === "completed" && imageResult.url ? (
+                                  <>
                                   <img
                                     className="workspace-image-preview"
                                     src={imageResult.url}
@@ -2439,6 +3019,95 @@ Don't:
                                   {activeSavePanelKey === imageSaveTarget.panelKey
                                     ? renderSavePanel(imageSaveTarget)
                                     : null}
+                                  </>
+                                  ) : (
+                                    <p className="image-meta">
+                                      {imageResult?.status === "processing"
+                                        ? `Task submitted. Task ID: ${imageResult.taskId ?? "n/a"}`
+                                        : imageResult?.error ?? "Image generation is still waiting for an image URL."}
+                                    </p>
+                                  )}
+                                  {imageResults.length > 1 ? (
+                                    <div className="image-result-stack">
+                                      {imageResults.slice(1).map((result) => {
+                                        const perModelSaveTarget =
+                                          createSaveTargetFromGeneratedImageResult(
+                                            selectedAsset,
+                                            result,
+                                          );
+
+                                        return (
+                                          <div className="image-result-row" key={result.model}>
+                                            <div>
+                                              <strong>{getImageModelLabel(result.model)}</strong>
+                                              <span>
+                                                {result.status === "completed"
+                                                  ? "Completed"
+                                                  : result.status === "processing"
+                                                    ? `Processing: ${result.taskId ?? "task submitted"}`
+                                                    : result.error ?? "Failed"}
+                                              </span>
+                                            </div>
+                                            {result.status === "completed" && result.url ? (
+                                              <div className="workspace-audio-actions">
+                                                <a
+                                                  className="secondary-button image-download-link"
+                                                  href={result.url}
+                                                  download={result.filename}
+                                                  target="_blank"
+                                                  rel="noreferrer"
+                                                >
+                                                  Download
+                                                </a>
+                                                <button
+                                                  type="button"
+                                                  className="secondary-button"
+                                                  onClick={() =>
+                                                    openSavePanel(perModelSaveTarget)
+                                                  }
+                                                >
+                                                  Save
+                                                </button>
+                                              </div>
+                                            ) : result.status === "processing" && result.taskId ? (
+                                              <div className="workspace-audio-actions">
+                                                <button
+                                                  type="button"
+                                                  className="secondary-button"
+                                                  disabled={checkingImageStatusKeys.includes(
+                                                    `${effectiveAssetKey}:${result.model}`,
+                                                  )}
+                                                  onClick={() =>
+                                                    handleImageStatusCheck(
+                                                      effectiveAssetKey,
+                                                      result,
+                                                      selectedAsset.title,
+                                                    )
+                                                  }
+                                                >
+                                                  {checkingImageStatusKeys.includes(
+                                                    `${effectiveAssetKey}:${result.model}`,
+                                                  )
+                                                    ? "Checking..."
+                                                    : "Check Status"}
+                                                </button>
+                                              </div>
+                                            ) : null}
+                                            {result.status === "completed" && result.url ? (
+                                              <img
+                                                className="workspace-image-preview"
+                                                src={result.url}
+                                                alt={`Generated preview for ${selectedAsset.title} from ${getImageModelLabel(result.model)}`}
+                                              />
+                                            ) : null}
+                                            {activeSavePanelKey === perModelSaveTarget.panelKey
+                                              ? renderSavePanel(perModelSaveTarget)
+                                              : null}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : null}
                                 </div>
                               ) : null}
                             </>

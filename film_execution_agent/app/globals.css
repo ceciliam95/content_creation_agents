@@ -1121,6 +1121,174 @@ h1 {
   margin-bottom: 18px;
 }
 
+.prompt-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: -6px;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+.model-settings-panel {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) repeat(3, minmax(120px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 252, 251, 0.82);
+}
+
+.model-settings-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.model-picker-field {
+  min-width: 220px;
+}
+
+.model-checkbox-list {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.model-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+}
+
+.model-checkbox-item input {
+  accent-color: var(--rose);
+}
+
+.reference-images-card {
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+  border-radius: 22px;
+  background: rgba(255, 252, 251, 0.66);
+}
+
+.reference-images-card h4 {
+  margin: 6px 0 0;
+  font-size: 1.08rem;
+  font-weight: 500;
+}
+
+.reference-dropzone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px;
+  border: 1px dashed rgba(164, 111, 121, 0.28);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 249, 248, 0.78) 0%, rgba(248, 240, 239, 0.78) 100%);
+}
+
+.reference-dropzone p {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+.reference-upload-button {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.reference-upload-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.reference-image-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.reference-image-chip {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(145, 120, 123, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 252, 251, 0.82);
+}
+
+.reference-image-chip img,
+.reference-file-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  border: 1px solid rgba(145, 120, 123, 0.12);
+  background: rgba(246, 241, 240, 0.9);
+}
+
+.reference-image-chip img {
+  object-fit: cover;
+}
+
+.reference-file-icon {
+  display: grid;
+  place-items: center;
+  color: var(--rose-deep);
+  font-size: 0.78rem;
+}
+
+.reference-image-chip strong,
+.reference-image-chip span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-image-chip span {
+  color: var(--text-soft);
+  font-size: 0.86rem;
+}
+
+.reference-remove-button {
+  flex-shrink: 0;
+  padding: 8px 13px;
+  border: 1px solid rgba(151, 73, 85, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 252, 251, 0.92);
+  color: #974955;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.reference-remove-button:hover {
+  border-color: rgba(151, 73, 85, 0.34);
+  background: rgba(151, 73, 85, 0.1);
+  color: #7f3540;
+}
+
 .workspace-description-card {
   margin-bottom: 18px;
   padding: 16px;
@@ -1209,6 +1377,36 @@ h1 {
   margin: 6px 0 0;
   font-size: 1.08rem;
   font-weight: 500;
+}
+
+.image-result-stack {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.image-result-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(145, 120, 123, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 252, 251, 0.74);
+}
+
+.image-result-row .workspace-image-preview {
+  grid-column: 1 / -1;
+}
+
+.image-result-row strong,
+.image-result-row span {
+  display: block;
+}
+
+.image-result-row span {
+  color: var(--text-soft);
+  font-size: 0.9rem;
 }
 
 .workspace-image-preview {
