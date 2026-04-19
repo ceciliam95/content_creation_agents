@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import {
   buildSceneGenerationPayload,
@@ -20,7 +23,10 @@ import {
   buildPromptTemplatePath,
   sanitizePromptTemplateName,
 } from "../lib/prompt-library";
-import { buildProjectFilePath } from "../lib/local-project-storage";
+import {
+  buildProjectFilePath,
+  readProjectTextFile,
+} from "../lib/local-project-storage";
 import {
   buildGptProtoGrokImagePayload,
   buildImageGenerationPayload,
@@ -307,6 +313,24 @@ test("buildProjectFilePath resolves a project file inside the selected root", ()
   );
 
   assert.match(output.filePath, /assets[\\/]characters[\\/]eleanor\.png$/i);
+});
+
+test("readProjectTextFile returns txt file content from the project root", async () => {
+  const rootPath = await mkdtemp(path.join(os.tmpdir(), "project-text-"));
+
+  try {
+    await writeFile(
+      path.join(rootPath, "scene1.txt"),
+      "SCENE 1\nA quiet hallway before dawn.",
+      "utf8",
+    );
+
+    const content = await readProjectTextFile(rootPath, "scene1.txt");
+
+    assert.equal(content, "SCENE 1\nA quiet hallway before dawn.");
+  } finally {
+    await rm(rootPath, { recursive: true, force: true });
+  }
 });
 
 test("buildImageGenerationPayload uses the SiliconFlow Qwen image defaults", () => {

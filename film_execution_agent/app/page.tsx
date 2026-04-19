@@ -1121,6 +1121,70 @@ export default function Page() {
     }
   }
 
+  async function readDroppedProjectTextFile(event: DragEvent<HTMLElement>) {
+    const projectPayload = event.dataTransfer.getData("application/json");
+    let relativePath = "";
+
+    if (projectPayload) {
+      try {
+        const parsed = JSON.parse(projectPayload) as {
+          relativePath?: string;
+          kind?: string;
+        };
+
+        relativePath = parsed.relativePath ?? "";
+      } catch {
+        relativePath = "";
+      }
+    }
+
+    if (!relativePath) {
+      relativePath = event.dataTransfer.getData("text/plain");
+    }
+
+    if (!relativePath.toLowerCase().endsWith(".txt")) {
+      return "";
+    }
+
+    const response = await fetch("/api/project-text-file", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        rootPath: projectRootPath,
+        relativePath,
+      }),
+    });
+    const data = (await response.json()) as {
+      content?: string;
+      error?: string;
+    };
+
+    if (!response.ok || typeof data.content !== "string") {
+      throw new Error(data.error ?? "Failed to read the project text file.");
+    }
+
+    return data.content;
+  }
+
+  async function handleAssetStoryboardDrop(event: DragEvent<HTMLTextAreaElement>) {
+    event.preventDefault();
+
+    try {
+      const content = await readDroppedProjectTextFile(event);
+
+      if (content) {
+        setAssetStoryboard(content);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to read the project text file.";
+
+      setAssetAnalysisError(message);
+    }
+  }
+
   function toggleReuse(assetKey: string) {
     setReusedAssetKeys((current) =>
       current.includes(assetKey)
@@ -2466,6 +2530,8 @@ Don't:
               <textarea
                 className="script-input asset-storyboard-input"
                 value={assetStoryboard}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => void handleAssetStoryboardDrop(event)}
                 onChange={(event) => setAssetStoryboard(event.target.value)}
                 placeholder="Paste your storyboard text here"
               />

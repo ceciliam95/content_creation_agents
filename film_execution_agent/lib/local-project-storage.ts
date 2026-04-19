@@ -147,6 +147,24 @@ export async function readProjectFileAsDataUrl(
   return `data:${mimeType};base64,${buffer.toString("base64")}`;
 }
 
+export async function readProjectTextFile(
+  rootPath: string,
+  relativeFilePath: string,
+): Promise<string> {
+  if (!relativeFilePath.toLowerCase().endsWith(".txt")) {
+    throw new Error("Only .txt project files can be read as text.");
+  }
+
+  const { filePath } = buildProjectFilePath(rootPath, relativeFilePath);
+  const stats = await fs.stat(filePath).catch(() => null);
+
+  if (!stats || !stats.isFile()) {
+    throw new Error("The selected project text file does not exist.");
+  }
+
+  return fs.readFile(filePath, "utf8");
+}
+
 export async function ensureProjectRootExists(rootPath: string) {
   const resolvedRoot = resolveProjectRoot(rootPath);
   const stats = await fs.stat(resolvedRoot).catch(() => null);
